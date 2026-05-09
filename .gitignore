@@ -7,4 +7,6 @@ frontend/package-lock.json
 backend/package-lock.json
 
 frontend/.env
-backend/.env    
+backend/.env
+
+node_modules/
