@@ -1,0 +1,144 @@
+const pool = require('../config/database');
+
+const createTables = async () => {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Users table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        full_name VARCHAR(255) NOT NULL,
+        email VARCHAR(255) UNIQUE NOT NULL,
+        password_hash VARCHAR(255),
+        role VARCHAR(50) NOT NULL DEFAULT 'researcher' CHECK (role IN ('researcher', 'project_lead', 'faculty', 'student')),
+        avatar_url TEXT,
+        institution VARCHAR(255),
+        bio TEXT,
+        sso_provider VARCHAR(50),
+        sso_id VARCHAR(255),
+        email_verified BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+
+    // Sessions table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS sessions (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        token_hash VARCHAR(255) NOT NULL,
+        expires_at TIMESTAMPTZ NOT NULL,
+        ip_address INET,
+        user_agent TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+
+    // Projects table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS projects (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        name VARCHAR(255) NOT NULL,
+        description TEXT,
+        owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        status VARCHAR(50) DEFAULT 'active' CHECK (status IN ('active', 'completed', 'archived', 'paused')),
+        visibility VARCHAR(50) DEFAULT 'private' CHECK (visibility IN ('public', 'private', 'institution')),
+        tags TEXT[],
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+
+    // Project members table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS project_members (
+        project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
+        user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+        member_role VARCHAR(50) DEFAULT 'member' CHECK (member_role IN ('owner', 'lead', 'member', 'viewer')),
+        joined_at TIMESTAMPTZ DEFAULT NOW(),
+        PRIMARY KEY (project_id, user_id)
+      );
+    `);
+
+    // Agents table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS agents (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
+        name VARCHAR(255) NOT NULL,
+        type VARCHAR(100) NOT NULL,
+        status VARCHAR(50) DEFAULT 'idle' CHECK (status IN ('idle', 'active', 'paused', 'error')),
+        config JSONB DEFAULT '{}',
+        last_active_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+
+    // Knowledge base documents
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS documents (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
+        uploaded_by UUID REFERENCES users(id),
+        title VARCHAR(500) NOT NULL,
+        content TEXT,
+        file_url TEXT,
+        file_type VARCHAR(100),
+        file_size_bytes BIGINT,
+        indexed BOOLEAN DEFAULT FALSE,
+        embedding_status VARCHAR(50) DEFAULT 'pending',
+        metadata JSONB DEFAULT '{}',
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+
+    // Updated_at trigger function
+    await client.query(`
+      CREATE OR REPLACE FUNCTION update_updated_at_column()
+      RETURNS TRIGGER AS $$
+      BEGIN
+        NEW.updated_at = NOW();
+        RETURN NEW;
+      END;
+      $$ language 'plpgsql';
+    `);
+
+    // Apply updated_at triggers
+    for (const table of ['users', 'projects']) {
+      await client.query(`
+        DROP TRIGGER IF EXISTS update_${table}_updated_at ON ${table};
+        CREATE TRIGGER update_${table}_updated_at
+          BEFORE UPDATE ON ${table}
+          FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+      `);
+    }
+
+    // Indexes for performance
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+      CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
+      CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
+      CREATE INDEX IF NOT EXISTS idx_projects_owner ON projects(owner_id);
+      CREATE INDEX IF NOT EXISTS idx_project_members_user ON project_members(user_id);
+      CREATE INDEX IF NOT EXISTS idx_documents_project ON documents(project_id);
+    `);
+
+    await client.query('COMMIT');
+    console.log('✅ Database migration completed successfully');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('❌ Migration failed:', err);
+    throw err;
+  } finally {
+    client.release();
+    await pool.end();
+  }
+};
+
+createTables().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
