@@ -34,6 +34,7 @@ router.post(
   '/',
   [
     body('name').trim().notEmpty().withMessage('Project name required'),
+    body('advisor_name').trim().notEmpty().withMessage('Advisor name required'),
     body('visibility')
       .optional()
       .isIn(['public', 'private', 'institution']),
@@ -43,13 +44,13 @@ router.post(
     if (!errors.isEmpty())
       return res.status(400).json({ errors: errors.array() });
 
-    const { name, description, visibility = 'private', tags } = req.body;
+    const { name, description, advisor_name, visibility = 'private', tags } = req.body;
     try {
       const result = await pool.query(
-        `INSERT INTO projects (name, description, owner_id, visibility, tags)
-         VALUES ($1, $2, $3, $4, $5)
+        `INSERT INTO projects (name, description, advisor_name, owner_id, visibility, tags)
+         VALUES ($1, $2, $3, $4, $5, $6)
          RETURNING *`,
-        [name, description, req.user.id, visibility, tags || []]
+        [name, description, advisor_name, req.user.id, visibility, tags || []]
       );
       // Auto-add owner as member
       await pool.query(
@@ -80,7 +81,20 @@ router.get('/:id', async (req, res) => {
     );
     if (result.rows.length === 0)
       return res.status(404).json({ error: 'Project not found' });
-    res.json({ project: result.rows[0] });
+      
+    const project = result.rows[0];
+    
+    // Fetch members
+    const membersResult = await pool.query(
+      `SELECT u.id, u.full_name, u.email, u.avatar_url, pm.member_role
+       FROM project_members pm
+       JOIN users u ON pm.user_id = u.id
+       WHERE pm.project_id = $1`,
+      [req.params.id]
+    );
+    project.members = membersResult.rows;
+
+    res.json({ project });
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
   }

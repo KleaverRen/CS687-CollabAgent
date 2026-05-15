@@ -42,7 +42,7 @@ export default function LandingPage() {
       {/* Hero */}
       <section className="px-4 md:px-8 pt-20 pb-24 bg-white">
         <div className="max-w-[1200px] mx-auto grid md:grid-cols-2 items-center gap-16 relative z-10">
-<div class="space-y-8">
+<div className="space-y-8">
             <span className="inline-flex items-center gap-2 px-3 py-1.5 bg-[#d6e0f1] text-[#596372] text-xs font-semibold rounded-full mb-8 tracking-wider uppercase">
             <span className="w-1.5 h-1.5 bg-[#003fb1] rounded-full animate-pulse"></span>
             Enterprise AI Orchestration
@@ -63,35 +63,35 @@ export default function LandingPage() {
             </button>
           </div>
           </div>
-          <div class="relative">
+          <div className="relative">
             <div
-              class="aspect-square rounded-xl bg-surface-container-high border border-outline-variant shadow-sm overflow-hidden"
+              className="aspect-square rounded-xl bg-surface-container-high border border-outline-variant shadow-sm overflow-hidden"
             >
               <img
                 alt="Hero representation"
-                class="w-full h-full object-cover mix-blend-multiply opacity-80"
+                className="w-full h-full object-cover mix-blend-multiply opacity-80"
                 data-alt="A high-tech laboratory environment featuring clean white workstations and sophisticated computing equipment. The scene is illuminated by cool, bright overhead lighting that creates sharp, professional shadows. The overall aesthetic is one of disciplined scientific inquiry and advanced technological integration, using a palette of whites, grays, and deep blues to reflect the CollabAgent brand identity."
                 src="https://lh3.googleusercontent.com/aida-public/AB6AXuCh2GrP3O25xGhwYTtPVb8i2PY4tKh8rvHBeH3FL7i9pJkHBh4Y5-_89pRswTkRmJtnUvtceCzV1WOxk8LkRP6qA90eTisAzb5nptYk7GFVS3GohdQVzBj3vVU6MxuzOjGl6fzVgUOMrp9_123eI-CaQ9lZ8oJKzdE9wm2xN9fGh1bkMpHWgVMz6527U9eu_fAK9MI1MIFYsG1hyXijr8PE_LhXpl89o9s8RtYsdvFnwndgoQ2g65mRK-tLRVwscfmjFs4zkAtB8Aw"
               />
               <div
-                class="absolute inset-0 bg-gradient-to-tr from-primary/10 to-transparent"
+                className="absolute inset-0 bg-gradient-to-tr from-primary/10 to-transparent"
               ></div>
             </div>
             <div
-              class="absolute -bottom-6 -left-6 bg-white p-6 rounded-lg border border-outline-variant shadow-xl max-w-[240px]"
+              className="absolute -bottom-6 -left-6 bg-white p-6 rounded-lg border border-outline-variant shadow-xl max-w-[240px]"
             >
-              <div class="flex items-center gap-3 mb-2">
+              <div className="flex items-center gap-3 mb-2">
                 <span
-                  class="material-symbols-outlined text-primary"
+                  className="material-symbols-outlined text-primary"
                   data-icon="auto_awesome"
                 >
                     auto_awesome
                 </span>
-                <span class="font-label-md text-label-md text-primary">
+                <span className="font-label-md text-label-md text-primary">
                     AI Insight
                 </span>
               </div>
-              <p class="font-caption text-caption text-on-surface-variant">
+              <p className="font-caption text-caption text-on-surface-variant">
                 "Dataset correlation detected in Research Node 4. Would you like
                 the Knowledge Agent to draft a summary?"
               </p>
@@ -202,14 +202,14 @@ export default function LandingPage() {
                 <span className="font-bold text-[#003fb1]">CollabAgent</span>
               </div>
               <p className="text-xs text-[#555f6d] leading-relaxed">Intelligent research collaboration powered by AI.</p>
-              <div class="flex gap-4">
+              <div className="flex gap-4">
             <span
-              class="material-symbols-outlined text-on-surface-variant cursor-pointer"
+              className="material-symbols-outlined text-on-surface-variant cursor-pointer"
               data-icon="language"
               >language</span
             >
             <span
-              class="material-symbols-outlined text-on-surface-variant cursor-pointer"
+              className="material-symbols-outlined text-on-surface-variant cursor-pointer"
               data-icon="public"
               >public</span
             >

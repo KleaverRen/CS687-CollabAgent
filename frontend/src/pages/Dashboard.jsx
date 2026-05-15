@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../utils/api';
+import Layout from '../components/Layout';
 import toast from 'react-hot-toast';
 
 function StatCard({ label, value, color, icon }) {
@@ -38,9 +39,9 @@ function ProjectCard({ project, onDelete }) {
         <span>🤖 {project.agent_count || 0} agents</span>
       </div>
       <div className="flex gap-2">
-        <button className="flex-1 h-8 text-xs font-semibold text-[#003fb1] border border-[#003fb1] rounded-lg hover:bg-[#f0f4ff] transition-colors">
+        <Link to={`/projects/${project.id}`} className="flex-1 h-8 flex items-center justify-center text-xs font-semibold text-[#003fb1] border border-[#003fb1] rounded-lg hover:bg-[#f0f4ff] transition-colors">
           Open
-        </button>
+        </Link>
         <button
           onClick={() => onDelete(project.id)}
           className="h-8 w-8 flex items-center justify-center text-[#ba1a1a] border border-[#e1e3e4] rounded-lg hover:bg-[#ffdad6] transition-colors"
@@ -55,7 +56,7 @@ function ProjectCard({ project, onDelete }) {
 }
 
 function NewProjectModal({ onClose, onCreate }) {
-  const [form, setForm] = useState({ name: '', description: '', visibility: 'private' });
+  const [form, setForm] = useState({ name: '', description: '', advisor_name: '', visibility: 'private' });
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e) => {
@@ -84,6 +85,15 @@ function NewProjectModal({ onClose, onCreate }) {
             <input
               value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
               placeholder="e.g. Quantum Entanglement Study"
+              required
+              className="w-full h-11 px-4 rounded-lg border border-[#c3c5d7] text-sm focus:border-[#003fb1] focus:ring-2 focus:ring-[#003fb1]/20 outline-none transition-all"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-[#434654] uppercase tracking-wider mb-1.5">Advisor Name *</label>
+            <input
+              value={form.advisor_name} onChange={(e) => setForm({ ...form, advisor_name: e.target.value })}
+              placeholder="e.g. Dr. Jane Smith"
               required
               className="w-full h-11 px-4 rounded-lg border border-[#c3c5d7] text-sm focus:border-[#003fb1] focus:ring-2 focus:ring-[#003fb1]/20 outline-none transition-all"
             />
@@ -123,13 +133,11 @@ function NewProjectModal({ onClose, onCreate }) {
 }
 
 export default function Dashboard() {
-  const { user, logout } = useAuth();
-  const navigate = useNavigate();
+  const { user } = useAuth();
   const [projects, setProjects] = useState([]);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showNewProject, setShowNewProject] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     const fetch = async () => {
@@ -160,87 +168,17 @@ export default function Dashboard() {
     }
   };
 
-  const handleLogout = async () => {
-    await logout();
-    navigate('/');
-  };
-
-  const roleLabel = { researcher: '🔬 Researcher', project_lead: '📊 Project Lead', faculty: '🎓 Faculty', student: '📚 Student' };
-
   return (
-    <div className="min-h-screen bg-[#f3f4f5] font-['Inter',sans-serif]">
-      {/* Sidebar (desktop) */}
-      <aside className="hidden md:flex flex-col fixed left-0 top-0 bottom-0 w-60 bg-white border-r border-[#e1e3e4] z-30">
-        <div className="flex items-center gap-2.5 px-5 py-4 border-b border-[#e1e3e4]">
-          <svg className="w-6 h-6 text-[#003fb1]" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/>
-          </svg>
-          <span className="font-bold text-[#003fb1] text-lg">CollabAgent</span>
-        </div>
-        <nav className="flex-1 p-3 space-y-1">
-          {[
-            { label: 'Dashboard', icon: '🏠', active: true },
-            { label: 'Projects', icon: '📁' },
-            { label: 'Agents', icon: '🤖' },
-            { label: 'Knowledge Base', icon: '🧠' },
-            { label: 'Analytics', icon: '📈' },
-            { label: 'Settings', icon: '⚙️' },
-          ].map((item) => (
-            <button key={item.label} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors text-left ${item.active ? 'bg-[#d6e0f1] text-[#003fb1]' : 'text-[#434654] hover:bg-[#f3f4f5]'}`}>
-              <span>{item.icon}</span>{item.label}
-            </button>
-          ))}
-        </nav>
-        <div className="p-4 border-t border-[#e1e3e4]">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-9 h-9 rounded-full bg-[#003fb1] text-white flex items-center justify-center text-sm font-bold">
-              {user?.full_name?.[0]?.toUpperCase()}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-[#191c1d] truncate">{user?.full_name}</p>
-              <p className="text-xs text-[#737686] truncate">{roleLabel[user?.role] || user?.role}</p>
-            </div>
+    <Layout activePath="/dashboard">
+      <div className="p-5 md:p-8 max-w-6xl mx-auto">
+        {/* Welcome */}
+        <div className="mb-8 flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl md:text-3xl font-bold text-[#191c1d]">
+              Welcome back, {user?.full_name?.split(' ')[0]} 👋
+            </h1>
+            <p className="text-sm text-[#555f6d] mt-1">{user?.institution || 'Your research workspace'}</p>
           </div>
-          <button onClick={handleLogout} className="w-full h-9 text-xs font-semibold text-[#ba1a1a] border border-[#e1e3e4] rounded-lg hover:bg-[#ffdad6] transition-colors">
-            Sign Out
-          </button>
-        </div>
-      </aside>
-
-      {/* Mobile header */}
-      <header className="md:hidden fixed top-0 left-0 right-0 z-40 bg-white border-b border-[#e1e3e4] flex items-center px-4 h-14">
-        <div className="flex items-center gap-2 flex-1">
-          <svg className="w-5 h-5 text-[#003fb1]" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/>
-          </svg>
-          <span className="font-bold text-[#003fb1]">CollabAgent</span>
-        </div>
-        <button onClick={() => setMenuOpen(!menuOpen)} className="p-2 text-[#434654]">
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d={menuOpen ? "M6 18L18 6M6 6l12 12" : "M3.75 6.75h16.5M3.75 12h16.5M3.75 17.25h16.5"} />
-          </svg>
-        </button>
-        {menuOpen && (
-          <div className="absolute top-14 left-0 right-0 bg-white border-b border-[#e1e3e4] p-4 space-y-2 shadow-lg">
-            {['Dashboard', 'Projects', 'Agents', 'Knowledge Base', 'Analytics'].map((i) => (
-              <button key={i} className="w-full text-left px-3 py-2.5 text-sm text-[#434654] hover:bg-[#f3f4f5] rounded-lg">{i}</button>
-            ))}
-            <button onClick={handleLogout} className="w-full text-left px-3 py-2.5 text-sm text-[#ba1a1a] hover:bg-[#ffdad6] rounded-lg">Sign Out</button>
-          </div>
-        )}
-      </header>
-
-      {/* Main content */}
-      <div className="md:ml-60 pt-14 md:pt-0">
-        <div className="p-5 md:p-8 max-w-6xl">
-          {/* Welcome */}
-          <div className="mb-8 flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl md:text-3xl font-bold text-[#191c1d]">
-                Welcome back, {user?.full_name?.split(' ')[0]} 👋
-              </h1>
-              <p className="text-sm text-[#555f6d] mt-1">{user?.institution || 'Your research workspace'}</p>
-            </div>
             <button
               onClick={() => setShowNewProject(true)}
               className="hidden md:flex items-center gap-2 px-5 py-2.5 bg-[#003fb1] text-white text-sm font-bold rounded-xl hover:bg-[#1353d8] transition-colors shadow-sm"
@@ -306,14 +244,13 @@ export default function Dashboard() {
             </div>
           )}
         </div>
-      </div>
 
-      {showNewProject && (
-        <NewProjectModal
-          onClose={() => setShowNewProject(false)}
-          onCreate={(p) => setProjects([p, ...projects])}
-        />
-      )}
-    </div>
+        {showNewProject && (
+          <NewProjectModal
+            onClose={() => setShowNewProject(false)}
+            onCreate={(p) => setProjects([p, ...projects])}
+          />
+        )}
+    </Layout>
   );
 }

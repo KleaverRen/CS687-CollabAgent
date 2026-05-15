@@ -43,6 +43,7 @@ const createTables = async () => {
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         name VARCHAR(255) NOT NULL,
         description TEXT,
+        advisor_name VARCHAR(255) NOT NULL,
         owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         status VARCHAR(50) DEFAULT 'active' CHECK (status IN ('active', 'completed', 'archived', 'paused')),
         visibility VARCHAR(50) DEFAULT 'private' CHECK (visibility IN ('public', 'private', 'institution')),

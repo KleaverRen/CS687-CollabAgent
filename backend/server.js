@@ -7,6 +7,8 @@ const rateLimit = require("express-rate-limit");
 const authRoutes = require("./routes/auth");
 const projectRoutes = require("./routes/projects");
 const userRoutes = require("./routes/users");
+const taskRoutes = require("./routes/tasks");
+const aiRoutes = require("./routes/ai_suggestions");
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -31,7 +33,7 @@ const limiter = rateLimit({
 });
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10, // Stricter for auth routes
+  max: 1000, // Increased for easier testing/development
   message: { error: "Too many attempts, please try again later." },
 });
 
@@ -52,6 +54,8 @@ app.get("/health", (req, res) => {
 app.use("/api/auth", authLimiter, authRoutes);
 app.use("/api/projects", projectRoutes);
 app.use("/api/users", userRoutes);
+app.use("/api/tasks", taskRoutes);
+app.use("/api/ai", aiRoutes);
 
 // 404 handler
 app.use((req, res) => {
