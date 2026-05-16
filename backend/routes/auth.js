@@ -23,7 +23,7 @@ router.post(
       .withMessage('Password must be at least 8 characters'),
     body('role')
       .optional()
-      .isIn(['researcher', 'project_lead', 'faculty', 'student'])
+      .isIn(['advisor', 'student'])
       .withMessage('Invalid role'),
   ],
   async (req, res) => {
@@ -32,7 +32,7 @@ router.post(
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { full_name, email, password, role = 'researcher', institution } = req.body;
+    const { full_name, email, password, role = 'student', institution } = req.body;
 
     try {
       // Check existing

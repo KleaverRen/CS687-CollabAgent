@@ -4,11 +4,11 @@
   "description": "CollabAgent — Full-stack AI Research Collaboration Platform",
   "scripts": {
     "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install",
-    "dev": "concurrently \"cd backend && npm run dev\" \"cd frontend && npm start\"",
-    "dev:backend": "cd backend && npm run dev",
-    "dev:frontend": "cd frontend && npm start",
+    "dev": "concurrently \"cd backend && NODE_OPTIONS='--no-deprecation' npm run dev\" \"cd frontend && NODE_OPTIONS='--no-deprecation' npm start\"",
+    "dev:backend": "cd backend && NODE_OPTIONS='--no-deprecation' npm run dev",
+    "dev:frontend": "cd frontend && NODE_OPTIONS='--no-deprecation' npm start",
     "db:migrate": "cd backend && npm run db:migrate",
-    "build:frontend": "cd frontend && npm run build"
+    "build:frontend": "cd frontend && NODE_OPTIONS='--no-deprecation' npm run build"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"

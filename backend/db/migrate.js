@@ -12,7 +12,7 @@ const createTables = async () => {
         full_name VARCHAR(255) NOT NULL,
         email VARCHAR(255) UNIQUE NOT NULL,
         password_hash VARCHAR(255),
-        role VARCHAR(50) NOT NULL DEFAULT 'researcher' CHECK (role IN ('researcher', 'project_lead', 'faculty', 'student')),
+        role VARCHAR(50) NOT NULL DEFAULT 'student' CHECK (role IN ('advisor', 'student')),
         avatar_url TEXT,
         institution VARCHAR(255),
         bio TEXT,
@@ -22,6 +22,23 @@ const createTables = async () => {
         created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW()
       );
+    `);
+
+    await client.query(`
+      UPDATE users
+      SET role = CASE
+        WHEN role IN ('advisor', 'faculty', 'project_lead', 'researcher') THEN 'advisor'
+        ELSE 'student'
+      END;
+
+      ALTER TABLE users
+      ALTER COLUMN role SET DEFAULT 'student';
+
+      ALTER TABLE users
+      DROP CONSTRAINT IF EXISTS users_role_check;
+
+      ALTER TABLE users
+      ADD CONSTRAINT users_role_check CHECK (role IN ('advisor', 'student'));
     `);
 
     // Sessions table
@@ -45,12 +62,19 @@ const createTables = async () => {
         description TEXT,
         advisor_name VARCHAR(255) NOT NULL,
         owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        quarter VARCHAR(20) CHECK (quarter IN ('Fall', 'Winter', 'Spring', 'Summer')),
         status VARCHAR(50) DEFAULT 'active' CHECK (status IN ('active', 'completed', 'archived', 'paused')),
         visibility VARCHAR(50) DEFAULT 'private' CHECK (visibility IN ('public', 'private', 'institution')),
         tags TEXT[],
         created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW()
       );
+    `);
+
+    await client.query(`
+      ALTER TABLE projects
+      ADD COLUMN IF NOT EXISTS quarter VARCHAR(20)
+      CHECK (quarter IN ('Fall', 'Winter', 'Spring', 'Summer'));
     `);
 
     // Project members table

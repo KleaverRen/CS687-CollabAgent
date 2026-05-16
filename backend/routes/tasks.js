@@ -6,6 +6,72 @@ const { authenticate } = require('../middleware/auth');
 
 router.use(authenticate);
 
+const ARCHIVED_PROJECT_ERROR = 'Archived projects are read-only.';
+
+async function canReadProject(user, projectId) {
+  const result = await pool.query(
+    `SELECT 1
+     FROM projects p
+     WHERE p.id = $1
+       AND (
+         p.owner_id = $2
+         OR p.id IN (SELECT project_id FROM project_members WHERE user_id = $2)
+         OR p.visibility = 'public'
+       )`,
+    [projectId, user.id]
+  );
+  return result.rows.length > 0;
+}
+
+async function canStudentWorkOnProject(user, projectId) {
+  if (user.role !== 'student') return false;
+  const result = await pool.query(
+    `SELECT 1 FROM project_members
+     WHERE project_id = $1 AND user_id = $2`,
+    [projectId, user.id]
+  );
+  return result.rows.length > 0;
+}
+
+async function isProjectArchived(projectId) {
+  const result = await pool.query('SELECT status FROM projects WHERE id = $1', [projectId]);
+  return result.rows[0]?.status === 'archived';
+}
+
+async function getTaskProjectId(taskId) {
+  const result = await pool.query('SELECT project_id FROM tasks WHERE id = $1', [taskId]);
+  return result.rows[0]?.project_id || null;
+}
+
+async function isTaskProjectArchived(taskId) {
+  const result = await pool.query(
+    `SELECT p.status
+     FROM tasks t
+     JOIN projects p ON p.id = t.project_id
+     WHERE t.id = $1`,
+    [taskId]
+  );
+  return result.rows[0]?.status === 'archived';
+}
+
+async function isDependencyProjectArchived(parentTaskId, childTaskId = null) {
+  const params = [parentTaskId];
+  let childFilter = '';
+  if (childTaskId) {
+    params.push(childTaskId);
+    childFilter = ` OR t.id = $${params.length}`;
+  }
+
+  const result = await pool.query(
+    `SELECT COUNT(*)::int AS archived_count
+     FROM tasks t
+     JOIN projects p ON p.id = t.project_id
+     WHERE (t.id = $1${childFilter}) AND p.status = 'archived'`,
+    params
+  );
+  return result.rows[0]?.archived_count > 0;
+}
+
 // ─── GET /api/tasks?project_id=&status=&assignee= ─────────────────────────
 router.get('/', [
   query('project_id').notEmpty().withMessage('project_id required'),
@@ -15,6 +81,10 @@ router.get('/', [
 
   const { project_id, status, assigned_to } = req.query;
   try {
+    if (!(await canReadProject(req.user, project_id))) {
+      return res.status(404).json({ error: 'Project not found or unauthorized' });
+    }
+
     let q = `
       SELECT t.*,
         u.full_name  AS assignee_name,
@@ -58,6 +128,13 @@ router.post('/', [
   } = req.body;
 
   try {
+    if (!(await canStudentWorkOnProject(req.user, project_id))) {
+      return res.status(403).json({ error: 'Only assigned students can create tasks' });
+    }
+    if (await isProjectArchived(project_id)) {
+      return res.status(403).json({ error: ARCHIVED_PROJECT_ERROR });
+    }
+
     const result = await pool.query(`
       INSERT INTO tasks
         (project_id, title, description, status, priority,
@@ -85,6 +162,12 @@ router.post('/', [
 // ─── GET /api/tasks/:id ───────────────────────────────────────────────────
 router.get('/:id', async (req, res) => {
   try {
+    const projectId = await getTaskProjectId(req.params.id);
+    if (!projectId) return res.status(404).json({ error: 'Task not found' });
+    if (!(await canReadProject(req.user, projectId))) {
+      return res.status(404).json({ error: 'Task not found' });
+    }
+
     const result = await pool.query(`
       SELECT t.*, u.full_name AS assignee_name, u.avatar_url AS assignee_avatar,
         cb.full_name AS creator_name
@@ -111,6 +194,15 @@ router.patch('/:id', [
     actual_hours, tags, metadata,
   } = req.body;
   try {
+    const projectId = await getTaskProjectId(req.params.id);
+    if (!projectId) return res.status(404).json({ error: 'Task not found' });
+    if (!(await canStudentWorkOnProject(req.user, projectId))) {
+      return res.status(403).json({ error: 'Only assigned students can update tasks' });
+    }
+    if (await isTaskProjectArchived(req.params.id)) {
+      return res.status(403).json({ error: ARCHIVED_PROJECT_ERROR });
+    }
+
     const result = await pool.query(`
       UPDATE tasks SET
         title           = COALESCE($1,  title),
@@ -143,6 +235,15 @@ router.patch('/:id', [
 // ─── DELETE /api/tasks/:id ────────────────────────────────────────────────
 router.delete('/:id', async (req, res) => {
   try {
+    const projectId = await getTaskProjectId(req.params.id);
+    if (!projectId) return res.status(404).json({ error: 'Task not found' });
+    if (!(await canStudentWorkOnProject(req.user, projectId))) {
+      return res.status(403).json({ error: 'Only assigned students can delete tasks' });
+    }
+    if (await isTaskProjectArchived(req.params.id)) {
+      return res.status(403).json({ error: ARCHIVED_PROJECT_ERROR });
+    }
+
     const result = await pool.query(
       'DELETE FROM tasks WHERE id = $1 AND created_by = $2 RETURNING id',
       [req.params.id, req.user.id]
@@ -157,6 +258,12 @@ router.delete('/:id', async (req, res) => {
 // ─── GET /api/tasks/:id/dependencies ─────────────────────────────────────
 router.get('/:id/dependencies', async (req, res) => {
   try {
+    const projectId = await getTaskProjectId(req.params.id);
+    if (!projectId) return res.status(404).json({ error: 'Task not found' });
+    if (!(await canReadProject(req.user, projectId))) {
+      return res.status(404).json({ error: 'Task not found' });
+    }
+
     const parents = await pool.query(`
       SELECT td.dep_type, t.id, t.title, t.status, t.priority, t.deadline
       FROM task_dependencies td JOIN tasks t ON td.parent_task_id = t.id
@@ -190,6 +297,15 @@ router.post('/:id/dependencies', [
     return res.status(400).json({ error: 'A task cannot depend on itself' });
 
   try {
+    const projectId = await getTaskProjectId(parent_task_id);
+    if (!projectId) return res.status(404).json({ error: 'Task not found' });
+    if (!(await canStudentWorkOnProject(req.user, projectId))) {
+      return res.status(403).json({ error: 'Only assigned students can update task dependencies' });
+    }
+    if (await isDependencyProjectArchived(parent_task_id, child_task_id)) {
+      return res.status(403).json({ error: ARCHIVED_PROJECT_ERROR });
+    }
+
     await pool.query(`
       INSERT INTO task_dependencies (parent_task_id, child_task_id, dep_type)
       VALUES ($1, $2, $3) ON CONFLICT DO NOTHING
@@ -204,6 +320,15 @@ router.post('/:id/dependencies', [
 // ─── DELETE /api/tasks/:id/dependencies/:childId ─────────────────────────
 router.delete('/:id/dependencies/:childId', async (req, res) => {
   try {
+    const projectId = await getTaskProjectId(req.params.id);
+    if (!projectId) return res.status(404).json({ error: 'Task not found' });
+    if (!(await canStudentWorkOnProject(req.user, projectId))) {
+      return res.status(403).json({ error: 'Only assigned students can update task dependencies' });
+    }
+    if (await isDependencyProjectArchived(req.params.id, req.params.childId)) {
+      return res.status(403).json({ error: ARCHIVED_PROJECT_ERROR });
+    }
+
     await pool.query(
       'DELETE FROM task_dependencies WHERE parent_task_id=$1 AND child_task_id=$2',
       [req.params.id, req.params.childId]
@@ -217,6 +342,10 @@ router.delete('/:id/dependencies/:childId', async (req, res) => {
 // ─── GET /api/tasks/graph/:project_id ────────────────────────────────────
 router.get('/graph/:project_id', async (req, res) => {
   try {
+    if (!(await canReadProject(req.user, req.params.project_id))) {
+      return res.status(404).json({ error: 'Project not found or unauthorized' });
+    }
+
     const tasks = await pool.query(
       `SELECT id, title, status, priority, deadline, estimated_hours FROM tasks WHERE project_id = $1`,
       [req.params.project_id]

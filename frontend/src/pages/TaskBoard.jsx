@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { TaskProvider, useTask } from '../context/TaskContext';
 import TaskCard from '../components/TaskCard';
 import AISuggestionDrawer from '../components/AISuggestionDrawer';
@@ -7,6 +7,7 @@ import DependencyGraph from '../components/DependencyGraph';
 import AffinityScorer from '../components/AffinityScorer';
 import Layout from '../components/Layout';
 import api from '../utils/api';
+import { useAuth } from '../context/AuthContext';
 
 const COLUMNS = [
   { id: 'todo',        label: 'To Do',       color: 'bg-slate-100 text-slate-600',   dot: 'bg-slate-400'   },
@@ -19,7 +20,7 @@ const COLUMNS = [
 function NewTaskModal({ projectId, onClose }) {
   const { createTask } = useTask();
   const [form, setForm] = useState({
-    title: '', description: '', priority: 'medium', deadline: '', estimated_hours: '', tags: '', assigned_to: null,
+    title: '', description: '', priority: 'low', deadline: '', estimated_hours: '', tags: '', assigned_to: null,
   });
   const [saving, setSaving] = useState(false);
   const tags = form.tags.split(',').map((t) => t.trim()).filter(Boolean);
@@ -106,7 +107,7 @@ function NewTaskModal({ projectId, onClose }) {
 }
 
 // ─── Task Detail Modal ────────────────────────────────────────────────────────
-function TaskDetailModal({ task, onClose }) {
+function TaskDetailModal({ task, onClose, readOnly = false }) {
   const { updateTask } = useTask();
   const [form, setForm] = useState({ ...task, deadline: task.deadline ? task.deadline.slice(0, 10) : '' });
   const [saving, setSaving] = useState(false);
@@ -121,6 +122,7 @@ function TaskDetailModal({ task, onClose }) {
   }, [task.project_id]);
 
   const handleSave = async () => {
+    if (readOnly) return;
     setSaving(true);
     await updateTask(task.id, {
       title: form.title, description: form.description, priority: form.priority,
@@ -145,30 +147,30 @@ function TaskDetailModal({ task, onClose }) {
         </div>
         <div className="px-6 py-5 space-y-4">
           <div><label className={labelCls}>Title</label>
-            <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className={inputCls} /></div>
+            <input value={form.title} disabled={readOnly} onChange={(e) => setForm({ ...form, title: e.target.value })} className={`${inputCls} disabled:bg-slate-50 disabled:text-slate-500`} /></div>
           <div><label className={labelCls}>Description</label>
-            <textarea value={form.description || ''} onChange={(e) => setForm({ ...form, description: e.target.value })}
-              rows={3} className="w-full px-3 py-2 rounded-xl border border-[#c3c5d7] text-sm focus:border-[#003fb1] outline-none resize-none" /></div>
+            <textarea value={form.description || ''} disabled={readOnly} onChange={(e) => setForm({ ...form, description: e.target.value })}
+              rows={3} className="w-full px-3 py-2 rounded-xl border border-[#c3c5d7] text-sm focus:border-[#003fb1] outline-none resize-none disabled:bg-slate-50 disabled:text-slate-500" /></div>
           <div className="grid grid-cols-2 gap-3">
             <div><label className={labelCls}>Status</label>
-              <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}
-                className="w-full h-10 px-3 rounded-xl border border-[#c3c5d7] text-sm focus:border-[#003fb1] outline-none bg-white">
+              <select value={form.status} disabled={readOnly} onChange={(e) => setForm({ ...form, status: e.target.value })}
+                className="w-full h-10 px-3 rounded-xl border border-[#c3c5d7] text-sm focus:border-[#003fb1] outline-none bg-white disabled:bg-slate-50 disabled:text-slate-500">
                 {['todo','in_progress','blocked','done'].map((s) => <option key={s} value={s}>{s.replace('_',' ').toUpperCase()}</option>)}
               </select></div>
             <div><label className={labelCls}>Priority</label>
-              <select value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}
-                className="w-full h-10 px-3 rounded-xl border border-[#c3c5d7] text-sm focus:border-[#003fb1] outline-none bg-white">
+              <select value={form.priority} disabled={readOnly} onChange={(e) => setForm({ ...form, priority: e.target.value })}
+                className="w-full h-10 px-3 rounded-xl border border-[#c3c5d7] text-sm focus:border-[#003fb1] outline-none bg-white disabled:bg-slate-50 disabled:text-slate-500">
                 {['low','medium','high','critical'].map((p) => <option key={p} value={p}>{p.charAt(0).toUpperCase()+p.slice(1)}</option>)}
               </select></div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div><label className={labelCls}>Deadline</label>
-              <input type="date" value={form.deadline} onChange={(e) => setForm({ ...form, deadline: e.target.value })} className={inputCls} /></div>
+              <input type="date" value={form.deadline} disabled={readOnly} onChange={(e) => setForm({ ...form, deadline: e.target.value })} className={`${inputCls} disabled:bg-slate-50 disabled:text-slate-500`} /></div>
             <div><label className={labelCls}>Est. Hours</label>
-              <input type="number" value={form.estimated_hours || ''} onChange={(e) => setForm({ ...form, estimated_hours: e.target.value })} className={inputCls} /></div>
+              <input type="number" value={form.estimated_hours || ''} disabled={readOnly} onChange={(e) => setForm({ ...form, estimated_hours: e.target.value })} className={`${inputCls} disabled:bg-slate-50 disabled:text-slate-500`} /></div>
           </div>
           <div><label className={labelCls}>Assignee</label>
-            <select value={form.assigned_to || ''} onChange={(e) => setForm({ ...form, assigned_to: e.target.value || null })} className={inputCls}>
+            <select value={form.assigned_to || ''} disabled={readOnly} onChange={(e) => setForm({ ...form, assigned_to: e.target.value || null })} className={`${inputCls} disabled:bg-slate-50 disabled:text-slate-500`}>
               <option value="">Unassigned</option>
               {members.map((m) => <option key={m.id} value={m.id}>{m.full_name} ({m.member_role})</option>)}
             </select>
@@ -176,9 +178,15 @@ function TaskDetailModal({ task, onClose }) {
         </div>
         <div className="flex gap-3 px-6 py-4 border-t border-[#e1e3e4]">
           <button onClick={onClose} className="flex-1 h-10 text-sm font-semibold border border-[#c3c5d7] rounded-xl hover:bg-slate-50 transition-colors">Cancel</button>
-          <button onClick={handleSave} disabled={saving} className="flex-1 h-10 bg-[#003fb1] text-white text-sm font-bold rounded-xl hover:bg-[#1353d8] disabled:opacity-60 transition-colors">
-            {saving ? 'Saving…' : 'Save Changes'}
-          </button>
+          {readOnly ? (
+            <button onClick={onClose} className="flex-1 h-10 bg-[#e1e3e4] text-[#434654] text-sm font-bold rounded-xl">
+              Read Only
+            </button>
+          ) : (
+            <button onClick={handleSave} disabled={saving} className="flex-1 h-10 bg-[#003fb1] text-white text-sm font-bold rounded-xl hover:bg-[#1353d8] disabled:opacity-60 transition-colors">
+              {saving ? 'Saving…' : 'Save Changes'}
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -186,15 +194,15 @@ function TaskDetailModal({ task, onClose }) {
 }
 
 // ─── Kanban Column ────────────────────────────────────────────────────────────
-function KanbanColumn({ col, tasks, onOpenTask, onDrop }) {
+function KanbanColumn({ col, tasks, onOpenTask, onDrop, readOnly = false }) {
   const [dragOver, setDragOver] = useState(false);
 
   return (
     <div
-      className={`flex-1 min-w-[220px] max-w-xs flex flex-col rounded-2xl transition-colors ${dragOver ? 'bg-[#003fb1]/5 ring-2 ring-[#003fb1]/20' : 'bg-slate-50'}`}
-      onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+      className={`flex-1 min-w-[220px] max-w-xs flex flex-col rounded-2xl transition-colors ${dragOver && !readOnly ? 'bg-[#003fb1]/5 ring-2 ring-[#003fb1]/20' : 'bg-slate-50'}`}
+      onDragOver={(e) => { if (!readOnly) { e.preventDefault(); setDragOver(true); } }}
       onDragLeave={() => setDragOver(false)}
-      onDrop={(e) => { setDragOver(false); onDrop(e, col.id); }}
+      onDrop={(e) => { setDragOver(false); if (!readOnly) onDrop(e, col.id); }}
     >
       {/* Column header */}
       <div className="flex items-center justify-between px-4 pt-4 pb-3">
@@ -207,13 +215,13 @@ function KanbanColumn({ col, tasks, onOpenTask, onDrop }) {
       {/* Cards */}
       <div className="flex-1 px-3 pb-4 space-y-3 overflow-y-auto" style={{ maxHeight: '65vh' }}>
         {tasks.map((task) => (
-          <div key={task.id} draggable onDragStart={(e) => e.dataTransfer.setData('taskId', task.id)}>
-            <TaskCard task={task} onOpen={onOpenTask} />
+          <div key={task.id} draggable={!readOnly} onDragStart={(e) => { if (!readOnly) e.dataTransfer.setData('taskId', task.id); }}>
+            <TaskCard task={task} onOpen={onOpenTask} readOnly={readOnly} />
           </div>
         ))}
         {tasks.length === 0 && (
           <div className="border-2 border-dashed border-slate-200 rounded-xl p-4 text-center text-[11px] text-slate-300">
-            Drop tasks here
+            {readOnly ? 'No tasks' : 'Drop tasks here'}
           </div>
         )}
       </div>
@@ -222,18 +230,22 @@ function KanbanColumn({ col, tasks, onOpenTask, onDrop }) {
 }
 
 // ─── Inner board (has access to TaskContext) ──────────────────────────────────
-function BoardInner({ projects, selectedProjectId, setSelectedProjectId }) {
+function BoardInner({ projects, selectedProjectId, setSelectedProjectId, selectedProject, scopedProject = false }) {
+  const { user } = useAuth();
   const { tasks, loading, loadTasks, updateTask, runAI, aiLoading, suggestions, isDemo } = useTask();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [showNewTask, setShowNewTask] = useState(false);
   const [selectedTask, setSelectedTask] = useState(null);
   const [showGraph, setShowGraph] = useState(false);
+  const isArchived = selectedProject?.status === 'archived';
+  const readOnly = !isDemo && (isArchived || user?.role !== 'student');
 
   useEffect(() => {
     if (selectedProjectId && !isDemo) loadTasks(selectedProjectId);
   }, [selectedProjectId, isDemo, loadTasks]);
 
   const handleDrop = (e, newStatus) => {
+    if (readOnly) return;
     const taskId = e.dataTransfer.getData('taskId');
     if (taskId) updateTask(taskId, { status: newStatus });
   };
@@ -264,6 +276,7 @@ function BoardInner({ projects, selectedProjectId, setSelectedProjectId }) {
             <select
               value={selectedProjectId || ''}
               onChange={(e) => setSelectedProjectId(e.target.value)}
+              disabled={scopedProject}
               className="h-9 px-3 rounded-xl border border-[#c3c5d7] text-sm focus:border-[#003fb1] outline-none bg-white"
             >
               <option value="">Select project…</option>
@@ -307,13 +320,21 @@ function BoardInner({ projects, selectedProjectId, setSelectedProjectId }) {
           {/* New Task */}
           <button
             onClick={() => setShowNewTask(true)}
-            disabled={!selectedProjectId && !isDemo}
+            disabled={readOnly || (!selectedProjectId && !isDemo)}
             className="h-9 px-4 text-xs font-bold bg-[#003fb1] text-white rounded-xl hover:bg-[#1353d8] transition-colors disabled:opacity-40 flex items-center gap-1.5"
           >
             <span className="text-base leading-none">+</span> New Task
           </button>
         </div>
       </div>
+
+      {readOnly && (
+        <div className="px-6 py-3 bg-[#e1e3e4] border-b border-[#c3c5d7] text-sm text-[#434654] flex-shrink-0">
+          {isArchived
+            ? 'This project is archived. Task board changes, new tasks, and AI suggestion actions are disabled.'
+            : 'Advisor view is read-only. Assigned students create tasks and update task status.'}
+        </div>
+      )}
 
       {/* ── Dependency graph panel ── */}
       {showGraph && (
@@ -348,6 +369,7 @@ function BoardInner({ projects, selectedProjectId, setSelectedProjectId }) {
                 tasks={tasks.filter((t) => t.status === col.id)}
                 onOpenTask={setSelectedTask}
                 onDrop={handleDrop}
+                readOnly={readOnly}
               />
             ))}
           </div>
@@ -364,14 +386,14 @@ function BoardInner({ projects, selectedProjectId, setSelectedProjectId }) {
       </div>
 
       {/* AI Drawer */}
-      <AISuggestionDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
+      <AISuggestionDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} readOnly={readOnly} />
 
       {/* Modals */}
-      {showNewTask && (
+      {showNewTask && !readOnly && (
         <NewTaskModal projectId={selectedProjectId} onClose={() => setShowNewTask(false)} />
       )}
       {selectedTask && (
-        <TaskDetailModal task={selectedTask} onClose={() => setSelectedTask(null)} />
+        <TaskDetailModal task={selectedTask} readOnly={readOnly} onClose={() => setSelectedTask(null)} />
       )}
     </div>
   );
@@ -379,27 +401,38 @@ function BoardInner({ projects, selectedProjectId, setSelectedProjectId }) {
 
 // ─── Page wrapper — handles demo mode detection ───────────────────────────────
 export default function TaskBoard() {
+  const { id: routeProjectId } = useParams();
   const [searchParams] = useSearchParams();
   const demoMode = searchParams.get('demo') === 'true';
   const [projects, setProjects] = useState([]);
-  const [selectedProjectId, setSelectedProjectId] = useState(null);
+  const [selectedProjectId, setSelectedProjectId] = useState(routeProjectId || null);
+  const selectedProject = projects.find((project) => project.id === selectedProjectId);
 
   useEffect(() => {
     if (!demoMode) {
-      api.get('/projects').then(({ data }) => {
-        setProjects(data.projects || []);
-        if (data.projects?.length) setSelectedProjectId(data.projects[0].id);
-      }).catch(() => {});
+      if (routeProjectId) {
+        api.get(`/projects/${routeProjectId}`).then(({ data }) => {
+          setProjects(data.project ? [data.project] : []);
+          setSelectedProjectId(routeProjectId);
+        }).catch(() => {});
+      } else {
+        api.get('/projects').then(({ data }) => {
+          setProjects(data.projects || []);
+          if (data.projects?.length) setSelectedProjectId(data.projects[0].id);
+        }).catch(() => {});
+      }
     }
-  }, [demoMode]);
+  }, [demoMode, routeProjectId]);
 
   return (
     <TaskProvider demoMode={demoMode}>
-      <Layout activePath="/tasks" projectId={selectedProjectId}>
+      <Layout activePath={routeProjectId ? `/projects/${routeProjectId}/tasks` : '/tasks'} projectId={routeProjectId || selectedProjectId}>
         <BoardInner
           projects={projects}
           selectedProjectId={selectedProjectId}
           setSelectedProjectId={setSelectedProjectId}
+          selectedProject={selectedProject}
+          scopedProject={Boolean(routeProjectId)}
         />
       </Layout>
     </TaskProvider>

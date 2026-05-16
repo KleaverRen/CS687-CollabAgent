@@ -1,15 +1,87 @@
 const express = require('express');
 const router = express.Router();
-const { body, validationResult } = require('express-validator');
+const { body, query, validationResult } = require('express-validator');
 const pool = require('../config/database');
 const { authenticate } = require('../middleware/auth');
 
 // All project routes require auth
 router.use(authenticate);
 
-// GET /api/projects - list user's projects
-router.get('/', async (req, res) => {
+const QUARTERS = ['Fall', 'Winter', 'Spring', 'Summer'];
+const PROJECT_STATUSES = ['active', 'completed', 'archived', 'paused'];
+
+function isAdvisor(req) {
+  return req.user.role === 'advisor';
+}
+
+function requireAdvisor(req, res) {
+  if (!isAdvisor(req)) {
+    res.status(403).json({ error: 'Advisor permissions required' });
+    return false;
+  }
+  return true;
+}
+
+const projectValidators = [
+  body('status').optional().isIn(PROJECT_STATUSES),
+  body('quarter').optional({ nullable: true, checkFalsy: true }).isIn(QUARTERS),
+  body('visibility').optional().isIn(['public', 'private', 'institution']),
+  body('name').optional().trim().notEmpty().withMessage('Project name required'),
+  body('advisor_name').optional().trim().notEmpty().withMessage('Advisor name required'),
+];
+
+async function updateProject(req, res) {
+  if (!requireAdvisor(req, res)) return;
+
+  const errors = validationResult(req);
+  if (!errors.isEmpty())
+    return res.status(400).json({ errors: errors.array() });
+
+  const { name, description, advisor_name, status, visibility, tags, quarter } = req.body;
   try {
+    const result = await pool.query(
+      `UPDATE projects SET
+        name = COALESCE($1, name),
+        description = COALESCE($2, description),
+        advisor_name = COALESCE($3, advisor_name),
+        status = COALESCE($4, status),
+        visibility = COALESCE($5, visibility),
+        tags = COALESCE($6, tags),
+        quarter = COALESCE($7, quarter)
+       WHERE id = $8 AND owner_id = $9
+       RETURNING *`,
+      [name, description, advisor_name, status, visibility, tags, quarter || null, req.params.id, req.user.id]
+    );
+    if (result.rows.length === 0)
+      return res.status(404).json({ error: 'Project not found or unauthorized' });
+    res.json({ project: result.rows[0] });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+}
+
+// GET /api/projects - list user's projects
+router.get('/', [
+  query('status').optional().isIn(PROJECT_STATUSES),
+  query('quarter').optional().isIn(QUARTERS),
+], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty())
+    return res.status(400).json({ errors: errors.array() });
+
+  try {
+    const params = [req.user.id];
+    let filters = '';
+    if (req.query.status) {
+      params.push(req.query.status);
+      filters += ` AND p.status = $${params.length}`;
+    }
+    if (req.query.quarter) {
+      params.push(req.query.quarter);
+      filters += ` AND p.quarter = $${params.length}`;
+    }
+
     const result = await pool.query(
       `SELECT p.*, u.full_name as owner_name,
         (SELECT COUNT(*) FROM project_members pm WHERE pm.project_id = p.id) as member_count,
@@ -17,10 +89,13 @@ router.get('/', async (req, res) => {
         (SELECT COUNT(*) FROM agents a WHERE a.project_id = p.id) as agent_count
        FROM projects p
        JOIN users u ON p.owner_id = u.id
-       WHERE p.owner_id = $1
-          OR p.id IN (SELECT project_id FROM project_members WHERE user_id = $1)
+       WHERE (
+         p.owner_id = $1
+         OR p.id IN (SELECT project_id FROM project_members WHERE user_id = $1)
+       )
+       ${filters}
        ORDER BY p.updated_at DESC`,
-      [req.user.id]
+      params
     );
     res.json({ projects: result.rows });
   } catch (err) {
@@ -34,23 +109,23 @@ router.post(
   '/',
   [
     body('name').trim().notEmpty().withMessage('Project name required'),
-    body('advisor_name').trim().notEmpty().withMessage('Advisor name required'),
-    body('visibility')
-      .optional()
-      .isIn(['public', 'private', 'institution']),
+    ...projectValidators,
   ],
   async (req, res) => {
+    if (!requireAdvisor(req, res)) return;
+
     const errors = validationResult(req);
     if (!errors.isEmpty())
       return res.status(400).json({ errors: errors.array() });
 
-    const { name, description, advisor_name, visibility = 'private', tags } = req.body;
+    const { name, description, advisor_name, visibility = 'private', tags, quarter } = req.body;
+    const finalAdvisorName = advisor_name || req.user.full_name;
     try {
       const result = await pool.query(
-        `INSERT INTO projects (name, description, advisor_name, owner_id, visibility, tags)
-         VALUES ($1, $2, $3, $4, $5, $6)
+        `INSERT INTO projects (name, description, advisor_name, owner_id, visibility, tags, quarter)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          RETURNING *`,
-        [name, description, advisor_name, req.user.id, visibility, tags || []]
+        [name, description, finalAdvisorName, req.user.id, visibility, tags || [], quarter || null]
       );
       // Auto-add owner as member
       await pool.query(
@@ -100,31 +175,74 @@ router.get('/:id', async (req, res) => {
   }
 });
 
+// PUT /api/projects/:id
+router.put('/:id', projectValidators, updateProject);
+
 // PATCH /api/projects/:id
-router.patch('/:id', async (req, res) => {
-  const { name, description, status, visibility, tags } = req.body;
-  try {
-    const result = await pool.query(
-      `UPDATE projects SET
-        name = COALESCE($1, name),
-        description = COALESCE($2, description),
-        status = COALESCE($3, status),
-        visibility = COALESCE($4, visibility),
-        tags = COALESCE($5, tags)
-       WHERE id = $6 AND owner_id = $7
-       RETURNING *`,
-      [name, description, status, visibility, tags, req.params.id, req.user.id]
-    );
-    if (result.rows.length === 0)
-      return res.status(404).json({ error: 'Project not found or unauthorized' });
-    res.json({ project: result.rows[0] });
-  } catch (err) {
-    res.status(500).json({ error: 'Internal server error' });
+router.patch('/:id', projectValidators, updateProject);
+
+// POST /api/projects/:id/members - advisor owner assigns a student by email
+router.post(
+  '/:id/members',
+  [
+    body('email').isEmail().normalizeEmail().withMessage('Valid student email required'),
+    body('member_role').optional().isIn(['member', 'viewer']),
+  ],
+  async (req, res) => {
+    if (!requireAdvisor(req, res)) return;
+
+    const errors = validationResult(req);
+    if (!errors.isEmpty())
+      return res.status(400).json({ errors: errors.array() });
+
+    const { email, member_role = 'member' } = req.body;
+    try {
+      const project = await pool.query(
+        'SELECT id FROM projects WHERE id = $1 AND owner_id = $2',
+        [req.params.id, req.user.id]
+      );
+      if (project.rows.length === 0)
+        return res.status(404).json({ error: 'Project not found or unauthorized' });
+
+      const student = await pool.query(
+        `SELECT id, full_name, email, avatar_url, role
+         FROM users
+         WHERE email = $1`,
+        [email]
+      );
+      if (student.rows.length === 0)
+        return res.status(404).json({ error: 'Student account not found' });
+      if (student.rows[0].role !== 'student')
+        return res.status(400).json({ error: 'Only student users can be assigned to projects' });
+
+      await pool.query(
+        `INSERT INTO project_members (project_id, user_id, member_role)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (project_id, user_id)
+         DO UPDATE SET member_role = EXCLUDED.member_role`,
+        [req.params.id, student.rows[0].id, member_role]
+      );
+
+      res.status(201).json({
+        member: {
+          id: student.rows[0].id,
+          full_name: student.rows[0].full_name,
+          email: student.rows[0].email,
+          avatar_url: student.rows[0].avatar_url,
+          member_role,
+        },
+      });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
   }
-});
+);
 
 // DELETE /api/projects/:id
 router.delete('/:id', async (req, res) => {
+  if (!requireAdvisor(req, res)) return;
+
   try {
     const result = await pool.query(
       'DELETE FROM projects WHERE id = $1 AND owner_id = $2 RETURNING id',

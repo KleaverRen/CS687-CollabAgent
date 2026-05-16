@@ -4,9 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 
 const ROLES = [
-  { value: 'researcher', label: 'Researcher', icon: '🔬' },
-  { value: 'project_lead', label: 'Project Lead', icon: '📊' },
-  { value: 'faculty', label: 'Faculty', icon: '🎓' },
+  { value: 'advisor', label: 'Advisor', icon: '🎓' },
   { value: 'student', label: 'Student', icon: '📚' },
 ];
 
@@ -14,7 +12,7 @@ export default function RegisterPage() {
   const navigate = useNavigate();
   const { register } = useAuth();
   const [form, setForm] = useState({
-    full_name: '', email: '', password: '', role: 'researcher', institution: '',
+    full_name: '', email: '', password: '', role: 'student', institution: '',
   });
   const [showPass, setShowPass] = useState(false);
   const [agreed, setAgreed] = useState(false);
@@ -228,8 +226,8 @@ export default function RegisterPage() {
               />
               <label htmlFor="terms" className="text-sm text-[#555f6d] cursor-pointer leading-relaxed">
                 I agree to the{' '}
-                <a href="#" className="text-[#003fb1] font-semibold hover:underline">Institutional Terms</a> and{' '}
-                <a href="#" className="text-[#003fb1] font-semibold hover:underline">Data Privacy Policy</a>
+                <button type="button" className="text-[#003fb1] font-semibold hover:underline">Institutional Terms</button> and{' '}
+                <button type="button" className="text-[#003fb1] font-semibold hover:underline">Data Privacy Policy</button>
               </label>
             </div>
             {errors.terms && <p className="text-xs text-[#ba1a1a] -mt-2">{errors.terms}</p>}
@@ -248,7 +246,7 @@ export default function RegisterPage() {
                   Creating account…
                 </>
               ) : (
-                <>Create Researcher Account <span>→</span></>
+                <>Create Account <span>→</span></>
               )}
             </button>
           </form>
@@ -260,7 +258,7 @@ export default function RegisterPage() {
 
           <footer className="mt-12 pt-8 border-t border-[#e1e3e4] flex flex-wrap justify-center gap-6">
             {['Help Center', 'Academic Ethics', 'Institutional Access'].map((l) => (
-              <a key={l} href="#" className="text-xs text-[#737686] hover:text-[#003fb1] transition-colors">{l}</a>
+              <button key={l} type="button" className="text-xs text-[#737686] hover:text-[#003fb1] transition-colors">{l}</button>
             ))}
           </footer>
         </div>

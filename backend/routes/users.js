@@ -90,12 +90,18 @@ router.get('/dashboard-stats', async (req, res) => {
   try {
     const stats = await pool.query(
       `SELECT
-        (SELECT COUNT(*) FROM projects WHERE owner_id = $1) as total_projects,
-        (SELECT COUNT(*) FROM projects WHERE owner_id = $1 AND status = 'active') as active_projects,
+        (SELECT COUNT(*) FROM projects p
+          WHERE p.owner_id = $1
+             OR p.id IN (SELECT project_id FROM project_members WHERE user_id = $1)) as total_projects,
+        (SELECT COUNT(*) FROM projects p
+          WHERE p.status = 'active'
+            AND (p.owner_id = $1
+              OR p.id IN (SELECT project_id FROM project_members WHERE user_id = $1))) as active_projects,
         (SELECT COUNT(*) FROM project_members WHERE user_id = $1) as collaborations,
         (SELECT COUNT(*) FROM documents d
           JOIN projects p ON d.project_id = p.id
-          WHERE p.owner_id = $1) as total_documents`,
+          WHERE p.owner_id = $1
+             OR p.id IN (SELECT project_id FROM project_members WHERE user_id = $1)) as total_documents`,
       [req.user.id]
     );
     res.json({ stats: stats.rows[0] });

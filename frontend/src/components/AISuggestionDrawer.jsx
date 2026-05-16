@@ -93,7 +93,7 @@ function AffinityMember({ member }) {
   );
 }
 
-function SuggestionCard({ suggestion, onApply, onDismiss }) {
+function SuggestionCard({ suggestion, onApply, onDismiss, readOnly = false }) {
   const cfg = SEVERITY_CONFIG[suggestion.severity] || SEVERITY_CONFIG.info;
 
   return (
@@ -145,9 +145,10 @@ function SuggestionCard({ suggestion, onApply, onDismiss }) {
         {suggestion.action_label && (
           <button
             onClick={() => onApply(suggestion)}
-            className="flex-1 h-8 text-[11px] font-bold bg-[#003fb1] text-white rounded-xl hover:bg-[#1353d8] transition-colors"
+            disabled={readOnly}
+            className="flex-1 h-8 text-[11px] font-bold bg-[#003fb1] text-white rounded-xl hover:bg-[#1353d8] transition-colors disabled:bg-[#e1e3e4] disabled:text-[#737686]"
           >
-            {suggestion.action_label}
+            {readOnly ? 'Read Only' : suggestion.action_label}
           </button>
         )}
         <button
@@ -161,7 +162,7 @@ function SuggestionCard({ suggestion, onApply, onDismiss }) {
   );
 }
 
-export default function AISuggestionDrawer({ open, onClose }) {
+export default function AISuggestionDrawer({ open, onClose, readOnly = false }) {
   const { suggestions, setSuggestions, applyAction, aiLoading } = useTask();
 
   const handleDismiss = (suggestion) => {
@@ -234,7 +235,7 @@ export default function AISuggestionDrawer({ open, onClose }) {
             </div>
           ) : (
             suggestions.map((s, i) => (
-              <SuggestionCard key={i} suggestion={s} onApply={applyAction} onDismiss={handleDismiss} />
+              <SuggestionCard key={i} suggestion={s} onApply={applyAction} onDismiss={handleDismiss} readOnly={readOnly} />
             ))
           )}
         </div>

@@ -45,7 +45,7 @@ function DeadlineBadge({ deadline }) {
   );
 }
 
-export default function TaskCard({ task, onOpen, dragging }) {
+export default function TaskCard({ task, onOpen, dragging, readOnly = false }) {
   const { updateTask, deleteTask } = useTask();
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -77,14 +77,14 @@ export default function TaskCard({ task, onOpen, dragging }) {
           {task.status === 'blocked' && (
             <span className="text-red-500 animate-pulse" title="Blocked">⊗</span>
           )}
-          <button
+          {!readOnly && <button
             className="opacity-0 group-hover:opacity-100 w-6 h-6 flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-400 transition-all"
             onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen); }}
           >
             <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
               <circle cx="10" cy="4"  r="1.5" /><circle cx="10" cy="10" r="1.5" /><circle cx="10" cy="16" r="1.5" />
             </svg>
-          </button>
+          </button>}
         </div>
       </div>
 
@@ -139,7 +139,7 @@ export default function TaskCard({ task, onOpen, dragging }) {
       </div>
 
       {/* Dropdown menu */}
-      {menuOpen && (
+      {menuOpen && !readOnly && (
         <div
           className="absolute right-2 top-10 z-20 bg-white border border-[#e1e3e4] rounded-xl shadow-lg py-1 w-40"
           onClick={(e) => e.stopPropagation()}

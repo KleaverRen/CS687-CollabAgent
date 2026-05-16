@@ -4,8 +4,8 @@
   "description": "CollabAgent API Server",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js",
+    "start": "NODE_OPTIONS='--no-deprecation' node server.js",
+    "dev": "NODE_OPTIONS='--no-deprecation' nodemon server.js",
     "db:migrate": "node db/migrate.js",
     "db:seed": "node db/seed.js"
   },

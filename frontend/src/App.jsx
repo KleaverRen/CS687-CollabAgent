@@ -7,8 +7,10 @@ import LandingPage from './pages/LandingPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import Dashboard from './pages/Dashboard';
+import ProjectsDirectory from './pages/ProjectsDirectory';
 import TaskBoard from './pages/TaskBoard';
 import ProjectOverview from './pages/ProjectOverview';
+import AgentLogs from './pages/AgentLogs';
 
 function AppRoutes() {
   const { user, loading } = useAuth();
@@ -38,10 +40,34 @@ function AppRoutes() {
         }
       />
       <Route
+        path="/projects"
+        element={
+          <ProtectedRoute>
+            <ProjectsDirectory />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/tasks"
         element={
           <ProtectedRoute>
             <TaskBoard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/projects/:id/tasks"
+        element={
+          <ProtectedRoute>
+            <TaskBoard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/projects/:id/agents"
+        element={
+          <ProtectedRoute>
+            <AgentLogs />
           </ProtectedRoute>
         }
       />

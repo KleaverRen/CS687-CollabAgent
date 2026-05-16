@@ -1,19 +1,37 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 export default function Sidebar({ isCollapsed, setIsCollapsed, activePath, projectId }) {
   const { user, logout } = useAuth();
-  const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
 
-  const navItems = [
-    { label: 'Dashboard',  icon: '🏠', href: '/dashboard' },
+  const globalItems = [
+    { label: 'Home', icon: '🏠', href: '/dashboard' },
+    { label: 'Projects', icon: '📁', href: '/projects' },
   ];
+
+  const contextItems = [];
   if (projectId) {
-    navItems.push({ label: 'Overview', icon: '📊', href: `/projects/${projectId}` });
+    contextItems.push({ label: 'Overview', icon: '📊', href: `/projects/${projectId}` });
+    contextItems.push({ label: 'Task Board', icon: '📋', href: `/projects/${projectId}/tasks` });
+    contextItems.push({ label: 'Agent Logs', icon: '🤖', href: `/projects/${projectId}/agents` });
+  } else {
+    contextItems.push({ label: 'Task Board', icon: '📋', href: '/tasks' });
   }
-  navItems.push({ label: 'Task Board', icon: '📋', href: '/tasks' });
+
+  const renderItem = (item) => {
+    const active = activePath === item.href;
+    return (
+      <Link key={item.label} to={item.href} title={isCollapsed ? item.label : undefined}
+        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${
+          active ? 'bg-[#d6e0f1] text-[#003fb1]' : 'text-[#434654] hover:bg-[#f3f4f5]'
+        }`}>
+        <span className="text-lg">{item.icon}</span>
+        {!isCollapsed && <span className="whitespace-nowrap">{item.label}</span>}
+      </Link>
+    );
+  };
 
   const handleLogout = async () => {
     if (logout) {
@@ -22,7 +40,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, activePath, proje
     window.location.href = '/';
   };
 
-  const roleLabel = { researcher: '🔬 Researcher', project_lead: '📊 Project Lead', faculty: '🎓 Faculty', student: '📚 Student' };
+  const roleLabel = { advisor: '🎓 Advisor', student: '📚 Student' };
 
   return (
     <>
@@ -36,19 +54,15 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, activePath, proje
             {!isCollapsed && <span className="font-bold text-[#003fb1] text-lg whitespace-nowrap">CollabAgent</span>}
           </div>
         </div>
-        <nav className="flex-1 p-3 space-y-1 overflow-hidden">
-          {navItems.map((item) => {
-            const active = activePath === item.href;
-            return (
-              <Link key={item.label} to={item.href} title={isCollapsed ? item.label : undefined}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${
-                  active ? 'bg-[#d6e0f1] text-[#003fb1]' : 'text-[#434654] hover:bg-[#f3f4f5]'
-                }`}>
-                <span className="text-lg">{item.icon}</span>
-                {!isCollapsed && <span className="whitespace-nowrap">{item.label}</span>}
-              </Link>
-            )
-          })}
+        <nav className="flex-1 p-3 space-y-5 overflow-hidden">
+          <div className="space-y-1">
+            {!isCollapsed && <div className="px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-[#737686]">Global</div>}
+            {globalItems.map(renderItem)}
+          </div>
+          <div className="space-y-1">
+            {!isCollapsed && <div className="px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-[#737686]">{projectId ? 'Project' : 'Tools'}</div>}
+            {contextItems.map(renderItem)}
+          </div>
         </nav>
         <div className="p-4 border-t border-[#e1e3e4] flex flex-col gap-3">
           <div className={`flex items-center gap-3 ${isCollapsed ? 'justify-center' : ''}`}>
@@ -94,7 +108,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, activePath, proje
         </button>
         {menuOpen && (
           <div className="absolute top-14 left-0 right-0 bg-white border-b border-[#e1e3e4] p-4 space-y-2 shadow-lg">
-            {navItems.map(item => (
+            {[...globalItems, ...contextItems].map(item => (
               <Link key={item.label} to={item.href} onClick={() => setMenuOpen(false)}
                 className={`w-full block px-3 py-2.5 text-sm rounded-lg ${activePath === item.href ? 'text-[#003fb1] bg-[#d6e0f1]' : 'text-[#434654] hover:bg-[#f3f4f5]'}`}>
                 {item.label}

@@ -27,13 +27,13 @@ app.use(
 // Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100,
+  max: process.env.NODE_ENV === 'production' ? 100 : Infinity,
   standardHeaders: true,
   legacyHeaders: false,
 });
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 1000, // Increased for easier testing/development
+  max: process.env.NODE_ENV === 'production' ? 5 : Infinity,
   message: { error: "Too many attempts, please try again later." },
 });
 
