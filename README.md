@@ -7,44 +7,80 @@ A full-stack AI research collaboration platform built with **React.js** (fronten
 ## 📁 Project Structure
 
 ```
-CS687-CollabAgent/
-├── frontend/               # React.js app (Create React App)
-│   ├── public/
-│   │   └── index.html
-│   ├── src/
-│   │   ├── components/
-│   │   │   └── ProtectedRoute.jsx
-│   │   ├── context/
-│   │   │   └── AuthContext.jsx
-│   │   ├── pages/
-│   │   │   ├── LandingPage.jsx
-│   │   │   ├── LoginPage.jsx
-│   │   │   ├── RegisterPage.jsx
-│   │   │   └── Dashboard.jsx
-│   │   ├── utils/
-│   │   │   └── api.js
-│   │   ├── App.jsx
-│   │   ├── index.js
-│   │   └── index.css
-│   └── package.json
+📁 CS687-CollabAgent/
+├── 📁 frontend/               # React.js app (Create React App)
+│   ├── 📁 public
+│   └── 🌐 index.html
+│   ├── 📁 src
+│   │   ├── 📁 components
+│   │   │   ├── 📄 AISuggestionDrawer.jsx
+│   │   │   ├── 📄 AffinityScorer.jsx
+│   │   │   ├── 📄 DependencyGraph.jsx
+│   │   │   ├── 📄 Layout.jsx
+│   │   │   ├── 📄 NewProjectModal.jsx
+│   │   │   ├── 📄 ProjectCard.jsx
+│   │   │   ├── 📄 ProtectedRoute.jsx
+│   │   │   ├── 📄 Sidebar.jsx
+│   │   │   └── 📄 TaskCard.jsx
+│   │   ├── 📁 context
+│   │   │   ├── 📄 AuthContext.jsx
+│   │   │   └── 📄 TaskContext.jsx
+│   │   ├── 📁 pages
+│   │   │   ├── 📄 AgentLogs.jsx
+│   │   │   ├── 📄 Dashboard.jsx
+│   │   │   ├── 📄 LandingPage.jsx
+│   │   │   ├── 📄 LoginPage.jsx
+│   │   │   ├── 📄 ProjectOverview.jsx
+│   │   │   ├── 📄 ProjectsDirectory.jsx
+│   │   │   ├── 📄 RegisterPage.jsx
+│   │   │   └── 📄 TaskBoard.jsx
+│   │   ├── 📁 utils
+│   │   │   └── 📄 api.js
+│   │   ├── 📄 App.jsx
+│   │   ├── 🎨 index.css
+│   │   └── 📄 index.js
+│   ├── ⚙️ package-lock.json
+│   ├── ⚙️ package.json
+│   └── 📄 tailwind.config.js
 │
-├── backend/                # Node.js + Express API
-│   ├── config/
-│   │   └── database.js
-│   ├── db/
-│   │   └── migrate.js
-│   ├── middleware/
-│   │   └── auth.js
-│   ├── routes/
-│   │   ├── auth.js
-│   │   ├── projects.js
-│   │   └── users.js
-│   ├── server.js
-│   ├── .env.example
-│   └── package.json
+├── 📁 backend/                # Node.js + Express API
+│   ├── 📁 config
+│   │   └── 📄 database.js
+│   ├── 📁 db
+│   │   ├── 📄 dump.sql
+│   │   ├── 📄 migrate.js
+│   │   ├── 📄 migrate_tasks.js
+│   │   └── 📄 seed.js
+│   ├── 📁 middleware
+│   │   ├── 📄 agentGate.js
+│   │   └── 📄 auth.js
+│   ├── 📁 routes
+│   │   ├── 📁 agents
+│   │   │   ├── 📄 coordination.js
+│   │   │   ├── 📄 feedback.js
+│   │   │   ├── 📄 progress.js
+│   │   │   └── 📄 task.js
+│   │   ├── 📄 ai_suggestions.js
+│   │   ├── 📄 auth.js
+│   │   ├── 📄 projects.js
+│   │   ├── 📄 rag.js
+│   │   ├── 📄 tasks.js
+│   │   └── 📄 users.js
+│   ├── 📁 services
+│   │   ├── 📄 documentService.js
+│   │   ├── 📄 embeddingService.js
+│   │   ├── 📄 eventBroker.js
+│   │   ├── 📄 generationService.js
+│   │   └── 📄 vectorStorage.js
+│   ├── 📁 test
+│   │   └── 📄 test_rag.js
+│   ├── ⚙️ .env.example
+│   ├── ⚙️ package-lock.json
+│   ├── ⚙️ package.json
+│   └── server.js
 │
-├── package.json            # Root scripts (runs both apps)
-└── README.md
+├── ⚙️ package.json            # Root scripts (runs both apps)
+└── 📄 README.md
 ```
 
 ---
@@ -96,7 +132,39 @@ DB_PASSWORD=your_postgres_password
 JWT_SECRET=your_super_secret_key_min_32_characters_long
 JWT_EXPIRES_IN=7d
 
+OLLAMA_HOST=http://localhost:11434
+OLLAMA_MODEL=llama3.2
+GROQ_API_KEY=your_groq_api_key_here
+GEMINI_API_KEY=your_gemini_api_key_here
 CLIENT_URL=http://localhost:3000
+```
+
+🔑 **Obtaining Cloud API Keys (Free Tiers):**
+CollabAgent uses Groq and Google Gemini cloud models for orchestration and heavy processing. You can obtain free developer API keys here:
+
+- **Gemini API Key**
+  1. Visit [Google AI Studio](https://aistudio.google.com/).
+  2. Log in with your standard Google account.  
+  3. Click the prominent Get API key button (usually in the top left or top navigation bar).  
+  4. Click Create API Key.
+  5. You will be prompted to associate it with a Google Cloud project. If you don't have one, just select Create key in new project.  
+  6. Copy your generated key.
+
+- **Groq API Key**
+  1. Go to the [Groq Cloud Console](https://console.groq.com/).
+  2. Sign up for an account (or log in if you already have one).  
+  3. In the left-hand sidebar or menu, click on API Keys.  
+  4. Click the Create API Key button.  
+  5. Give your key a descriptive name (e.g., "collabagent-dev") and click Submit.  
+  6. Copy the key immediately before closing the window. 
+
+🦙 **Setting up local fallback (Ollama):**
+
+CollabAgent uses Ollama as the default local model provider. Install and start it before using RAG generation:
+```bash
+brew install ollama
+brew services start ollama
+ollama pull llama3.2
 ```
 **Troubleshooting Database Credentials:**
 If you are unsure of your `DB_USER` or `DB_PASSWORD`, you can set up or reset the default `postgres` user by following these steps:

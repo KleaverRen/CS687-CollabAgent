@@ -120,6 +120,60 @@ const createTables = async () => {
       );
     `);
 
+    // Activity log for Team Coordination Agent
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS activity_log (
+        id SERIAL PRIMARY KEY,
+        project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
+        actor_id UUID REFERENCES users(id) ON DELETE SET NULL,
+        event_type VARCHAR(64) NOT NULL,
+        metadata JSONB DEFAULT '{}',
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+
+    // Structured feedback from advisors
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS feedback (
+        id SERIAL PRIMARY KEY,
+        project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
+        advisor_id UUID REFERENCES users(id) ON DELETE CASCADE,
+        milestone_ref VARCHAR(128),
+        category VARCHAR(64),
+        severity VARCHAR(16) DEFAULT 'medium',
+        body TEXT NOT NULL,
+        status VARCHAR(32) DEFAULT 'posted',
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        resolved_at TIMESTAMPTZ
+      );
+    `);
+
+    // Student responses to advisor feedback
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS feedback_responses (
+        id SERIAL PRIMARY KEY,
+        feedback_id INTEGER REFERENCES feedback(id) ON DELETE CASCADE,
+        student_id UUID REFERENCES users(id) ON DELETE CASCADE,
+        body TEXT NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+
+    // Risk register for Progress Monitoring Agent
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS risk_register (
+        id SERIAL PRIMARY KEY,
+        project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
+        risk_type VARCHAR(64),
+        severity VARCHAR(16),
+        description TEXT,
+        source_ref VARCHAR(128),
+        suggested_action TEXT,
+        is_resolved BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+
     // Updated_at trigger function
     await client.query(`
       CREATE OR REPLACE FUNCTION update_updated_at_column()
