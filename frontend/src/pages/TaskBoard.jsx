@@ -8,6 +8,7 @@ import AffinityScorer from '../components/AffinityScorer';
 import Layout from '../components/Layout';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
+import clsx from 'clsx';
 
 const COLUMNS = [
   { id: 'todo',        label: 'To Do',       color: 'bg-slate-100 text-slate-600',   dot: 'bg-slate-400'   },
@@ -43,15 +44,15 @@ function NewTaskModal({ projectId, onClose }) {
   const inputCls = 'w-full h-10 px-3 rounded-xl border border-[#c3c5d7] text-sm focus:border-[#003fb1] focus:ring-2 focus:ring-[#003fb1]/20 outline-none transition-all';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl w-full max-w-lg shadow-2xl max-h-[90vh] flex flex-col">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[#e1e3e4]">
-          <h3 className="text-base font-bold text-[#191c1d]">New Task</h3>
-          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-400">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+    <div className={clsx('fixed', 'inset-0', 'z-50', 'flex', 'items-center', 'justify-center', 'p-4', 'bg-black/40', 'backdrop-blur-sm')}>
+      <div className={clsx('bg-white', 'rounded-2xl', 'w-full', 'max-w-lg', 'shadow-2xl', 'max-h-[90vh]', 'flex', 'flex-col')}>
+        <div className={clsx('flex', 'items-center', 'justify-between', 'px-6', 'py-4', 'border-b', 'border-[#e1e3e4]')}>
+          <h3 className={clsx('text-base', 'font-bold', 'text-[#191c1d]')}>New Task</h3>
+          <button onClick={onClose} className={clsx('w-7', 'h-7', 'flex', 'items-center', 'justify-center', 'rounded-lg', 'hover:bg-slate-100', 'text-slate-400')}>
+            <svg className={clsx('w-4', 'h-4')} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
         </div>
-        <form id="newTaskForm" onSubmit={handleSubmit} className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+        <form id="newTaskForm" onSubmit={handleSubmit} className={clsx('flex-1', 'overflow-y-auto', 'px-6', 'py-5', 'space-y-4')}>
           <div>
             <label className={labelCls}>Title *</label>
             <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })}
@@ -60,13 +61,13 @@ function NewTaskModal({ projectId, onClose }) {
           <div>
             <label className={labelCls}>Description</label>
             <textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })}
-              rows={2} placeholder="What needs to be done?" className="w-full px-3 py-2 rounded-xl border border-[#c3c5d7] text-sm focus:border-[#003fb1] focus:ring-2 focus:ring-[#003fb1]/20 outline-none resize-none transition-all" />
+              rows={2} placeholder="What needs to be done?" className={clsx('w-full', 'px-3', 'py-2', 'rounded-xl', 'border', 'border-[#c3c5d7]', 'text-sm', 'focus:border-[#003fb1]', 'focus:ring-2', 'focus:ring-[#003fb1]/20', 'outline-none', 'resize-none', 'transition-all')} />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className={clsx('grid', 'grid-cols-2', 'gap-3')}>
             <div>
               <label className={labelCls}>Priority</label>
               <select value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value })}
-                className="w-full h-10 px-3 rounded-xl border border-[#c3c5d7] text-sm focus:border-[#003fb1] outline-none bg-white">
+                className={clsx('w-full', 'h-10', 'px-3', 'rounded-xl', 'border', 'border-[#c3c5d7]', 'text-sm', 'focus:border-[#003fb1]', 'outline-none', 'bg-white')}>
                 {['low','medium','high','critical'].map((p) => <option key={p} value={p}>{p.charAt(0).toUpperCase()+p.slice(1)}</option>)}
               </select>
             </div>
@@ -95,9 +96,9 @@ function NewTaskModal({ projectId, onClose }) {
             onSelect={(m) => setForm({ ...form, assigned_to: m.id === form.assigned_to ? null : m.id })}
           />
         </form>
-        <div className="flex gap-3 px-6 py-4 border-t border-[#e1e3e4]">
-          <button type="button" onClick={onClose} className="flex-1 h-10 text-sm font-semibold border border-[#c3c5d7] rounded-xl hover:bg-slate-50 transition-colors">Cancel</button>
-          <button type="submit" form="newTaskForm" disabled={saving} className="flex-1 h-10 bg-[#003fb1] text-white text-sm font-bold rounded-xl hover:bg-[#1353d8] disabled:opacity-60 transition-colors">
+        <div className={clsx('flex', 'gap-3', 'px-6', 'py-4', 'border-t', 'border-[#e1e3e4]')}>
+          <button type="button" onClick={onClose} className={clsx('flex-1', 'h-10', 'text-sm', 'font-semibold', 'border', 'border-[#c3c5d7]', 'rounded-xl', 'hover:bg-slate-50', 'transition-colors')}>Cancel</button>
+          <button type="submit" form="newTaskForm" disabled={saving} className={clsx('flex-1', 'h-10', 'bg-[#003fb1]', 'text-white', 'text-sm', 'font-bold', 'rounded-xl', 'hover:bg-[#1353d8]', 'disabled:opacity-60', 'transition-colors')}>
             {saving ? 'Creating…' : 'Create Task'}
           </button>
         </div>
@@ -137,33 +138,33 @@ function TaskDetailModal({ task, onClose, readOnly = false }) {
   const inputCls = 'w-full h-10 px-3 rounded-xl border border-[#c3c5d7] text-sm focus:border-[#003fb1] focus:ring-2 focus:ring-[#003fb1]/20 outline-none transition-all';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[#e1e3e4]">
-          <h3 className="text-base font-bold text-[#191c1d]">Edit Task</h3>
-          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-400">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+    <div className={clsx('fixed', 'inset-0', 'z-50', 'flex', 'items-center', 'justify-center', 'p-4', 'bg-black/40', 'backdrop-blur-sm')}>
+      <div className={clsx('bg-white', 'rounded-2xl', 'w-full', 'max-w-md', 'shadow-2xl')}>
+        <div className={clsx('flex', 'items-center', 'justify-between', 'px-6', 'py-4', 'border-b', 'border-[#e1e3e4]')}>
+          <h3 className={clsx('text-base', 'font-bold', 'text-[#191c1d]')}>Edit Task</h3>
+          <button onClick={onClose} className={clsx('w-7', 'h-7', 'flex', 'items-center', 'justify-center', 'rounded-lg', 'hover:bg-slate-100', 'text-slate-400')}>
+            <svg className={clsx('w-4', 'h-4')} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
           </button>
         </div>
-        <div className="px-6 py-5 space-y-4">
+        <div className={clsx('px-6', 'py-5', 'space-y-4')}>
           <div><label className={labelCls}>Title</label>
             <input value={form.title} disabled={readOnly} onChange={(e) => setForm({ ...form, title: e.target.value })} className={`${inputCls} disabled:bg-slate-50 disabled:text-slate-500`} /></div>
           <div><label className={labelCls}>Description</label>
             <textarea value={form.description || ''} disabled={readOnly} onChange={(e) => setForm({ ...form, description: e.target.value })}
-              rows={3} className="w-full px-3 py-2 rounded-xl border border-[#c3c5d7] text-sm focus:border-[#003fb1] outline-none resize-none disabled:bg-slate-50 disabled:text-slate-500" /></div>
-          <div className="grid grid-cols-2 gap-3">
+              rows={3} className={clsx('w-full', 'px-3', 'py-2', 'rounded-xl', 'border', 'border-[#c3c5d7]', 'text-sm', 'focus:border-[#003fb1]', 'outline-none', 'resize-none', 'disabled:bg-slate-50', 'disabled:text-slate-500')} /></div>
+          <div className={clsx('grid', 'grid-cols-2', 'gap-3')}>
             <div><label className={labelCls}>Status</label>
               <select value={form.status} disabled={readOnly} onChange={(e) => setForm({ ...form, status: e.target.value })}
-                className="w-full h-10 px-3 rounded-xl border border-[#c3c5d7] text-sm focus:border-[#003fb1] outline-none bg-white disabled:bg-slate-50 disabled:text-slate-500">
+                className={clsx('w-full', 'h-10', 'px-3', 'rounded-xl', 'border', 'border-[#c3c5d7]', 'text-sm', 'focus:border-[#003fb1]', 'outline-none', 'bg-white', 'disabled:bg-slate-50', 'disabled:text-slate-500')}>
                 {['todo','in_progress','blocked','done'].map((s) => <option key={s} value={s}>{s.replace('_',' ').toUpperCase()}</option>)}
               </select></div>
             <div><label className={labelCls}>Priority</label>
               <select value={form.priority} disabled={readOnly} onChange={(e) => setForm({ ...form, priority: e.target.value })}
-                className="w-full h-10 px-3 rounded-xl border border-[#c3c5d7] text-sm focus:border-[#003fb1] outline-none bg-white disabled:bg-slate-50 disabled:text-slate-500">
+                className={clsx('w-full', 'h-10', 'px-3', 'rounded-xl', 'border', 'border-[#c3c5d7]', 'text-sm', 'focus:border-[#003fb1]', 'outline-none', 'bg-white', 'disabled:bg-slate-50', 'disabled:text-slate-500')}>
                 {['low','medium','high','critical'].map((p) => <option key={p} value={p}>{p.charAt(0).toUpperCase()+p.slice(1)}</option>)}
               </select></div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className={clsx('grid', 'grid-cols-2', 'gap-3')}>
             <div><label className={labelCls}>Deadline</label>
               <input type="date" value={form.deadline} disabled={readOnly} onChange={(e) => setForm({ ...form, deadline: e.target.value })} className={`${inputCls} disabled:bg-slate-50 disabled:text-slate-500`} /></div>
             <div><label className={labelCls}>Est. Hours</label>
@@ -176,14 +177,14 @@ function TaskDetailModal({ task, onClose, readOnly = false }) {
             </select>
           </div>
         </div>
-        <div className="flex gap-3 px-6 py-4 border-t border-[#e1e3e4]">
-          <button onClick={onClose} className="flex-1 h-10 text-sm font-semibold border border-[#c3c5d7] rounded-xl hover:bg-slate-50 transition-colors">Cancel</button>
+        <div className={clsx('flex', 'gap-3', 'px-6', 'py-4', 'border-t', 'border-[#e1e3e4]')}>
+          <button onClick={onClose} className={clsx('flex-1', 'h-10', 'text-sm', 'font-semibold', 'border', 'border-[#c3c5d7]', 'rounded-xl', 'hover:bg-slate-50', 'transition-colors')}>Cancel</button>
           {readOnly ? (
-            <button onClick={onClose} className="flex-1 h-10 bg-[#e1e3e4] text-[#434654] text-sm font-bold rounded-xl">
+            <button onClick={onClose} className={clsx('flex-1', 'h-10', 'bg-[#e1e3e4]', 'text-[#434654]', 'text-sm', 'font-bold', 'rounded-xl')}>
               Read Only
             </button>
           ) : (
-            <button onClick={handleSave} disabled={saving} className="flex-1 h-10 bg-[#003fb1] text-white text-sm font-bold rounded-xl hover:bg-[#1353d8] disabled:opacity-60 transition-colors">
+            <button onClick={handleSave} disabled={saving} className={clsx('flex-1', 'h-10', 'bg-[#003fb1]', 'text-white', 'text-sm', 'font-bold', 'rounded-xl', 'hover:bg-[#1353d8]', 'disabled:opacity-60', 'transition-colors')}>
               {saving ? 'Saving…' : 'Save Changes'}
             </button>
           )}
@@ -205,22 +206,22 @@ function KanbanColumn({ col, tasks, onOpenTask, onDrop, readOnly = false }) {
       onDrop={(e) => { setDragOver(false); if (!readOnly) onDrop(e, col.id); }}
     >
       {/* Column header */}
-      <div className="flex items-center justify-between px-4 pt-4 pb-3">
-        <div className="flex items-center gap-2">
+      <div className={clsx('flex', 'items-center', 'justify-between', 'px-4', 'pt-4', 'pb-3')}>
+        <div className={clsx('flex', 'items-center', 'gap-2')}>
           <div className={`w-2.5 h-2.5 rounded-full ${col.dot}`} />
-          <span className="text-xs font-bold text-slate-700">{col.label}</span>
+          <span className={clsx('text-xs', 'font-bold', 'text-slate-700')}>{col.label}</span>
           <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${col.color}`}>{tasks.length}</span>
         </div>
       </div>
       {/* Cards */}
-      <div className="flex-1 px-3 pb-4 space-y-3 overflow-y-auto" style={{ maxHeight: '65vh' }}>
+      <div className={clsx('flex-1', 'px-3', 'pb-4', 'space-y-3', 'overflow-y-auto')} style={{ maxHeight: '65vh' }}>
         {tasks.map((task) => (
           <div key={task.id} draggable={!readOnly} onDragStart={(e) => { if (!readOnly) e.dataTransfer.setData('taskId', task.id); }}>
             <TaskCard task={task} onOpen={onOpenTask} readOnly={readOnly} />
           </div>
         ))}
         {tasks.length === 0 && (
-          <div className="border-2 border-dashed border-slate-200 rounded-xl p-4 text-center text-[11px] text-slate-300">
+          <div className={clsx('border-2', 'border-dashed', 'border-slate-200', 'rounded-xl', 'p-4', 'text-center', 'text-[11px]', 'text-slate-300')}>
             {readOnly ? 'No tasks' : 'Drop tasks here'}
           </div>
         )}
@@ -258,26 +259,26 @@ function BoardInner({ projects, selectedProjectId, setSelectedProjectId, selecte
   const criticalCount = suggestions.filter((s) => s.severity === 'critical').length;
 
   return (
-    <div className="flex flex-col h-full">
+    <div className={clsx('flex', 'flex-col', 'h-full')}>
       {/* ── Top bar ── */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-[#e1e3e4] bg-white flex-shrink-0 gap-3 flex-wrap">
-        <div className="flex items-center gap-3">
-          <h1 className="text-lg font-bold text-[#191c1d]">Task Board</h1>
+      <div className={clsx('flex', 'items-center', 'justify-between', 'px-6', 'py-4', 'border-b', 'border-[#e1e3e4]', 'bg-white', 'flex-shrink-0', 'gap-3', 'flex-wrap')}>
+        <div className={clsx('flex', 'items-center', 'gap-3')}>
+          <h1 className={clsx('text-lg', 'font-bold', 'text-[#191c1d]')}>Task Board</h1>
           {isDemo && (
-            <span className="text-[10px] px-2 py-1 bg-violet-100 text-violet-700 rounded-full font-bold animate-pulse">
+            <span className={clsx('text-[10px]', 'px-2', 'py-1', 'bg-violet-100', 'text-violet-700', 'rounded-full', 'font-bold', 'animate-pulse')}>
               DEMO MODE
             </span>
           )}
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className={clsx('flex', 'items-center', 'gap-2', 'flex-wrap')}>
           {/* Project selector */}
           {!isDemo && projects.length > 0 && (
             <select
               value={selectedProjectId || ''}
               onChange={(e) => setSelectedProjectId(e.target.value)}
               disabled={scopedProject}
-              className="h-9 px-3 rounded-xl border border-[#c3c5d7] text-sm focus:border-[#003fb1] outline-none bg-white"
+              className={clsx('h-9', 'px-3', 'rounded-xl', 'border', 'border-[#c3c5d7]', 'text-sm', 'focus:border-[#003fb1]', 'outline-none', 'bg-white')}
             >
               <option value="">Select project…</option>
               {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -290,7 +291,7 @@ function BoardInner({ projects, selectedProjectId, setSelectedProjectId, selecte
             className={`h-9 px-4 text-xs font-semibold rounded-xl border transition-colors flex items-center gap-2
               ${showGraph ? 'bg-[#003fb1] text-white border-[#003fb1]' : 'border-[#c3c5d7] text-[#434654] hover:bg-slate-50'}`}
           >
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <svg className={clsx('w-3.5', 'h-3.5')} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
             </svg>
             Graph
@@ -300,18 +301,18 @@ function BoardInner({ projects, selectedProjectId, setSelectedProjectId, selecte
           <button
             onClick={handleRunAI}
             disabled={aiLoading}
-            className="h-9 px-4 text-xs font-bold rounded-xl bg-gradient-to-r from-violet-600 to-[#003fb1] text-white hover:opacity-90 transition-opacity flex items-center gap-2 relative shadow-sm disabled:opacity-70"
+            className={clsx('h-9', 'px-4', 'text-xs', 'font-bold', 'rounded-xl', 'bg-gradient-to-r', 'from-violet-600', 'to-[#003fb1]', 'text-white', 'hover:opacity-90', 'transition-opacity', 'flex', 'items-center', 'gap-2', 'relative', 'shadow-sm', 'disabled:opacity-70')}
           >
             {aiLoading ? (
-              <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              <div className={clsx('w-3.5', 'h-3.5', 'border-2', 'border-white/30', 'border-t-white', 'rounded-full', 'animate-spin')} />
             ) : (
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <svg className={clsx('w-3.5', 'h-3.5')} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
               </svg>
             )}
-            Run AI Analysis
+            Run Suggestion
             {criticalCount > 0 && !drawerOpen && (
-              <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center animate-bounce">
+              <span className={clsx('absolute', '-top-1.5', '-right-1.5', 'w-4', 'h-4', 'bg-red-500', 'text-white', 'text-[9px]', 'font-bold', 'rounded-full', 'flex', 'items-center', 'justify-center', 'animate-bounce')}>
                 {criticalCount}
               </span>
             )}
@@ -321,15 +322,15 @@ function BoardInner({ projects, selectedProjectId, setSelectedProjectId, selecte
           <button
             onClick={() => setShowNewTask(true)}
             disabled={readOnly || (!selectedProjectId && !isDemo)}
-            className="h-9 px-4 text-xs font-bold bg-[#003fb1] text-white rounded-xl hover:bg-[#1353d8] transition-colors disabled:opacity-40 flex items-center gap-1.5"
+            className={clsx('h-9', 'px-4', 'text-xs', 'font-bold', 'bg-[#003fb1]', 'text-white', 'rounded-xl', 'hover:bg-[#1353d8]', 'transition-colors', 'disabled:opacity-40', 'flex', 'items-center', 'gap-1.5')}
           >
-            <span className="text-base leading-none">+</span> New Task
+            <span className={clsx('text-base', 'leading-none')}>+</span> New Task
           </button>
         </div>
       </div>
 
       {readOnly && (
-        <div className="px-6 py-3 bg-[#e1e3e4] border-b border-[#c3c5d7] text-sm text-[#434654] flex-shrink-0">
+        <div className={clsx('px-6', 'py-3', 'bg-[#e1e3e4]', 'border-b', 'border-[#c3c5d7]', 'text-sm', 'text-[#434654]', 'flex-shrink-0')}>
           {isArchived
             ? 'This project is archived. Task board changes, new tasks, and AI suggestion actions are disabled.'
             : 'Advisor view is read-only. Assigned students create tasks and update task status.'}
@@ -338,30 +339,30 @@ function BoardInner({ projects, selectedProjectId, setSelectedProjectId, selecte
 
       {/* ── Dependency graph panel ── */}
       {showGraph && (
-        <div className="px-6 py-4 bg-white border-b border-[#e1e3e4] flex-shrink-0">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-bold text-[#191c1d]">Dependency Graph</h2>
-            <span className="text-[10px] text-slate-400">Red edges = critical path · Orange = blocked chain</span>
+        <div className={clsx('px-6', 'py-4', 'bg-white', 'border-b', 'border-[#e1e3e4]', 'flex-shrink-0')}>
+          <div className={clsx('flex', 'items-center', 'justify-between', 'mb-3')}>
+            <h2 className={clsx('text-sm', 'font-bold', 'text-[#191c1d]')}>Dependency Graph</h2>
+            <span className={clsx('text-[10px]', 'text-slate-400')}>Red edges = critical path · Orange = blocked chain</span>
           </div>
-          <div className="bg-slate-50 rounded-2xl p-4 overflow-auto" style={{ maxHeight: '320px' }}>
+          <div className={clsx('bg-slate-50', 'rounded-2xl', 'p-4', 'overflow-auto')} style={{ maxHeight: '320px' }}>
             <DependencyGraph />
           </div>
         </div>
       )}
 
       {/* ── Kanban board ── */}
-      <div className="flex-1 overflow-auto px-6 py-5">
+      <div className={clsx('flex-1', 'overflow-auto', 'px-6', 'py-5')}>
         {loading ? (
-          <div className="flex gap-4">
+          <div className={clsx('flex', 'gap-4')}>
             {COLUMNS.map((col) => (
-              <div key={col.id} className="flex-1 min-w-[220px] bg-slate-50 rounded-2xl p-4">
-                <div className="h-4 bg-slate-200 rounded w-1/2 mb-4 animate-pulse" />
-                {[1, 2].map((i) => <div key={i} className="h-24 bg-white rounded-2xl mb-3 animate-pulse border border-slate-100" />)}
+              <div key={col.id} className={clsx('flex-1', 'min-w-[220px]', 'bg-slate-50', 'rounded-2xl', 'p-4')}>
+                <div className={clsx('h-4', 'bg-slate-200', 'rounded', 'w-1/2', 'mb-4', 'animate-pulse')} />
+                {[1, 2].map((i) => <div key={i} className={clsx('h-24', 'bg-white', 'rounded-2xl', 'mb-3', 'animate-pulse', 'border', 'border-slate-100')} />)}
               </div>
             ))}
           </div>
         ) : (
-          <div className="flex gap-4">
+          <div className={clsx('flex', 'gap-4')}>
             {COLUMNS.map((col) => (
               <KanbanColumn
                 key={col.id}
@@ -377,10 +378,10 @@ function BoardInner({ projects, selectedProjectId, setSelectedProjectId, selecte
 
         {/* Empty state */}
         {!loading && !isDemo && !selectedProjectId && (
-          <div className="flex flex-col items-center justify-center h-64 text-center gap-3">
-            <div className="w-14 h-14 bg-[#d6e0f1] rounded-2xl flex items-center justify-center text-2xl">📋</div>
-            <h3 className="font-semibold text-[#191c1d]">Select a project to view its tasks</h3>
-            <p className="text-sm text-slate-400">Or open <code className="bg-slate-100 px-1.5 py-0.5 rounded text-xs">/tasks?demo=true</code> for a live demo.</p>
+          <div className={clsx('flex', 'flex-col', 'items-center', 'justify-center', 'h-64', 'text-center', 'gap-3')}>
+            <div className={clsx('w-14', 'h-14', 'bg-[#d6e0f1]', 'rounded-2xl', 'flex', 'items-center', 'justify-center', 'text-2xl')}>📋</div>
+            <h3 className={clsx('font-semibold', 'text-[#191c1d]')}>Select a project to view its tasks</h3>
+            <p className={clsx('text-sm', 'text-slate-400')}>Or open <code className={clsx('bg-slate-100', 'px-1.5', 'py-0.5', 'rounded', 'text-xs')}>/tasks?demo=true</code> for a live demo.</p>
           </div>
         )}
       </div>

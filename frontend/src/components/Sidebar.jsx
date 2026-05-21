@@ -15,6 +15,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, activePath, proje
   if (projectId) {
     contextItems.push({ label: 'Overview', icon: '📊', href: `/projects/${projectId}` });
     contextItems.push({ label: 'Task Board', icon: '📋', href: `/projects/${projectId}/tasks` });
+    contextItems.push({ label: 'AI Workbench', icon: '✨', href: `/projects/${projectId}/ai` });
     contextItems.push({ label: 'Agent Logs', icon: '🤖', href: `/projects/${projectId}/agents` });
   } else {
     contextItems.push({ label: 'Task Board', icon: '📋', href: '/tasks' });

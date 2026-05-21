@@ -1,14 +1,12 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../../config/database');
-const auth = require('../../middleware/auth');
+const { authenticate } = require('../../middleware/auth');
 const eventBroker = require('../../services/eventBroker');
 const generationService = require('../../services/generationService');
-const { ChatPromptTemplate } = require("@langchain/core/prompts");
-const { StringOutputParser } = require("@langchain/core/output_parsers");
 
 // GET /api/agents/progress/dashboard - Aggregated health metrics
-router.get('/dashboard', auth, async (req, res) => {
+router.get('/dashboard', authenticate, async (req, res) => {
   try {
     const { projectId } = req.query;
     
@@ -51,7 +49,7 @@ router.get('/dashboard', auth, async (req, res) => {
 });
 
 // GET /api/agents/progress/risks - Prioritized risk register
-router.get('/risks', auth, async (req, res) => {
+router.get('/risks', authenticate, async (req, res) => {
   try {
     const { projectId } = req.query;
     if (!projectId) return res.status(400).json({ error: 'projectId is required' });
@@ -78,7 +76,7 @@ router.get('/risks', auth, async (req, res) => {
 });
 
 // GET /api/agents/progress/report - Generate a narrative progress report via LLM
-router.get('/report', auth, async (req, res) => {
+router.get('/report', authenticate, async (req, res) => {
   try {
     const { projectId } = req.query;
     if (!projectId) return res.status(400).json({ error: 'projectId is required' });
@@ -98,10 +96,8 @@ Detailed Tasks: ${JSON.stringify(tasks.rows)}
 Detailed Risks: ${JSON.stringify(risks.rows)}
 `;
 
-    let reportMarkdown = "Progress report not available.";
-
-    if (generationService.groqClient) {
-      const systemPrompt = `You are the CollabAgent Progress Monitoring AI.
+    const fallbackReport = `### Fallback Report\nWe currently have ${tasks.rows.length} tasks and ${risks.rows.length} risks.`;
+    const systemPrompt = `You are the CollabAgent Progress Monitoring AI.
 Based on the provided raw JSON data about tasks, feedback, and risks, write a concise, professional 3-paragraph Markdown progress report.
 Format:
 ### Executive Summary
@@ -111,16 +107,7 @@ Format:
 ### Risk Assessment & Recommendations
 [Paragraph]`;
 
-      const prompt = ChatPromptTemplate.fromMessages([
-        ["system", systemPrompt],
-        ["user", "Data context:\n{stats}"]
-      ]);
-
-      const chain = prompt.pipe(generationService.groqClient).pipe(new StringOutputParser());
-      reportMarkdown = await chain.invoke({ stats: statsContext });
-    } else {
-      reportMarkdown = `### Fallback Report\nWe currently have ${tasks.rows.length} tasks and ${risks.rows.length} risks.`;
-    }
+    const reportMarkdown = await generationService.generateText(systemPrompt, `Data context:\n${statsContext}`, fallbackReport);
 
     res.json({ report: reportMarkdown });
   } catch (err) {

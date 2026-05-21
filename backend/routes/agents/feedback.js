@@ -1,15 +1,13 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../../config/database');
-const auth = require('../../middleware/auth');
+const { authenticate } = require('../../middleware/auth');
 const agentGate = require('../../middleware/agentGate');
 const eventBroker = require('../../services/eventBroker');
 const generationService = require('../../services/generationService');
-const { ChatPromptTemplate } = require("@langchain/core/prompts");
-const { StringOutputParser } = require("@langchain/core/output_parsers");
 
 // POST /api/agents/feedback/submit - Submit feedback and generate suggested responses
-router.post('/submit', auth, async (req, res) => {
+router.post('/submit', authenticate, async (req, res) => {
   try {
     const { projectId, body, category, milestoneRef, severity } = req.body;
     
@@ -23,12 +21,12 @@ router.post('/submit', auth, async (req, res) => {
       console.warn(`[FeedbackAgent] Non-advisor (${req.user.role}) is submitting feedback.`);
     }
 
-    let suggestedResponseTemplate = "Acknowledge the feedback and outline next steps.";
-    let structuredSummary = "Feedback received.";
+    const fallbackResult = {
+      structured_summary: "Feedback received.",
+      suggested_response_template: "Acknowledge the feedback and outline next steps."
+    };
 
-    // Use Groq/LangChain to structure the feedback and suggest a response
-    if (generationService.groqClient) {
-      const systemPrompt = `You are the CollabAgent Advisor Feedback AI.
+    const systemPrompt = `You are the CollabAgent Advisor Feedback AI.
 Analyze the following feedback from an academic advisor to a student team.
 Respond strictly in valid JSON containing:
 1. "structured_summary": A very brief 1-sentence summary of the main critique.
@@ -36,23 +34,9 @@ Respond strictly in valid JSON containing:
 
 Format strictly as JSON.`;
 
-      const prompt = ChatPromptTemplate.fromMessages([
-        ["system", systemPrompt],
-        ["user", "Feedback:\n{body}"]
-      ]);
-
-      const chain = prompt.pipe(generationService.groqClient).pipe(new StringOutputParser());
-      const responseText = await chain.invoke({ body });
-      
-      try {
-        const cleanJson = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
-        const parsed = JSON.parse(cleanJson);
-        structuredSummary = parsed.structured_summary || structuredSummary;
-        suggestedResponseTemplate = parsed.suggested_response_template || suggestedResponseTemplate;
-      } catch (parseError) {
-        console.error('[FeedbackAgent] Failed to parse LLM response:', responseText);
-      }
-    }
+    const parsed = await generationService.generateJson(systemPrompt, `Feedback:\n${body}`, fallbackResult);
+    const structuredSummary = parsed.structured_summary || fallbackResult.structured_summary;
+    const suggestedResponseTemplate = parsed.suggested_response_template || fallbackResult.suggested_response_template;
 
     // Insert into database
     const result = await pool.query(
@@ -83,7 +67,7 @@ Format strictly as JSON.`;
 });
 
 // GET /api/agents/feedback/open - Get unresolved feedback
-router.get('/open', auth, async (req, res) => {
+router.get('/open', authenticate, async (req, res) => {
   try {
     const { projectId } = req.query;
     
@@ -115,7 +99,7 @@ router.get('/open', auth, async (req, res) => {
 });
 
 // POST /api/agents/feedback/respond - Student responds to feedback
-router.post('/respond', auth, async (req, res) => {
+router.post('/respond', authenticate, async (req, res) => {
   try {
     const { feedbackId, responseBody } = req.body;
     
@@ -144,7 +128,7 @@ router.post('/respond', auth, async (req, res) => {
 });
 
 // POST /api/agents/feedback/resolve - Mark feedback as resolved (requires user confirmation)
-router.post('/resolve', auth, agentGate, async (req, res) => {
+router.post('/resolve', authenticate, agentGate, async (req, res) => {
   try {
     const { feedbackId } = req.body;
     

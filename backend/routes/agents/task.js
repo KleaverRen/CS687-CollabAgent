@@ -1,15 +1,18 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../../config/database');
-const auth = require('../../middleware/auth');
+const { authenticate } = require('../../middleware/auth');
 const agentGate = require('../../middleware/agentGate');
 const eventBroker = require('../../services/eventBroker');
 const generationService = require('../../services/generationService');
-const { ChatPromptTemplate } = require("@langchain/core/prompts");
-const { StringOutputParser } = require("@langchain/core/output_parsers");
+
+function normalizePriority(priority) {
+  const normalized = String(priority || 'medium').toLowerCase();
+  return ['low', 'medium', 'high', 'urgent'].includes(normalized) ? normalized : 'medium';
+}
 
 // POST /api/agents/task/parse - Parse NL task request into a draft
-router.post('/parse', auth, async (req, res) => {
+router.post('/parse', authenticate, async (req, res) => {
   try {
     const { request, projectId } = req.body;
     
@@ -17,40 +20,19 @@ router.post('/parse', auth, async (req, res) => {
       return res.status(400).json({ error: 'Request text and projectId are required' });
     }
 
-    // Try to use LangChain with Groq if available
-    let draft = null;
+    const fallbackDraft = {
+      title: request.substring(0, 50) + "...",
+      priority: "medium",
+      assignee_name: null
+    };
 
-    if (generationService.groqClient) {
-      const systemPrompt = `You are the CollabAgent Task Management AI. 
+    const systemPrompt = `You are the CollabAgent Task Management AI. 
 Extract the following details from the user's request: title, priority (low, medium, high, urgent), and assignee_name (if mentioned).
 Respond strictly with valid JSON.
 Format: { "title": "string", "priority": "string", "assignee_name": "string or null" }`;
-      
-      const prompt = ChatPromptTemplate.fromMessages([
-        ["system", systemPrompt],
-        ["user", "{request}"]
-      ]);
 
-      const chain = prompt.pipe(generationService.groqClient).pipe(new StringOutputParser());
-      const responseText = await chain.invoke({ request });
-      
-      try {
-        // Strip out any markdown code blocks
-        const cleanJson = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
-        draft = JSON.parse(cleanJson);
-      } catch (parseError) {
-        console.error('[TaskAgent] Failed to parse LLM response:', responseText);
-      }
-    }
-
-    // Fallback manual draft if no API or parsing failed
-    if (!draft) {
-      draft = {
-        title: request.substring(0, 50) + "...",
-        priority: "medium",
-        assignee_name: null
-      };
-    }
+    const draft = await generationService.generateJson(systemPrompt, request, fallbackDraft);
+    draft.priority = normalizePriority(draft.priority);
 
     // Return the draft to the user for confirmation (no DB write yet)
     res.json({
@@ -65,7 +47,7 @@ Format: { "title": "string", "priority": "string", "assignee_name": "string or n
 });
 
 // POST /api/agents/task/confirm - Commit task to DB (Requires user_confirmed: true)
-router.post('/confirm', auth, agentGate, async (req, res) => {
+router.post('/confirm', authenticate, agentGate, async (req, res) => {
   try {
     const { draft, projectId } = req.body;
     
@@ -98,7 +80,7 @@ router.post('/confirm', auth, agentGate, async (req, res) => {
 });
 
 // GET /api/agents/task/prioritized - Get tasks ranked by priority
-router.get('/prioritized', auth, async (req, res) => {
+router.get('/prioritized', authenticate, async (req, res) => {
   try {
     const { projectId } = req.query;
     

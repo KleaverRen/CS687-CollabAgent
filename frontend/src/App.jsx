@@ -11,6 +11,7 @@ import ProjectsDirectory from './pages/ProjectsDirectory';
 import TaskBoard from './pages/TaskBoard';
 import ProjectOverview from './pages/ProjectOverview';
 import AgentLogs from './pages/AgentLogs';
+import AIWorkbench from './pages/AIWorkbench';
 
 function AppRoutes() {
   const { user, loading } = useAuth();
@@ -60,6 +61,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <TaskBoard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/projects/:id/ai"
+        element={
+          <ProtectedRoute>
+            <AIWorkbench />
           </ProtectedRoute>
         }
       />
