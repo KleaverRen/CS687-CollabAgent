@@ -187,7 +187,7 @@ export default function AISuggestionDrawer({ open, onClose, readOnly = false }) 
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-[#e1e3e4] flex-shrink-0">
           <div>
-            <h3 className="font-bold text-[#191c1d] text-sm">AI Workflow Analysis</h3>
+            <h3 className="font-bold text-[#191c1d] text-sm">Suggestions</h3>
             <p className="text-[10px] text-slate-400 mt-0.5">
               {aiLoading
                 ? 'Running analysis…'

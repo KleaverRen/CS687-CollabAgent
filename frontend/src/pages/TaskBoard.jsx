@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { TaskProvider, useTask } from '../context/TaskContext';
 import TaskCard from '../components/TaskCard';
 import AISuggestionDrawer from '../components/AISuggestionDrawer';
@@ -277,7 +277,6 @@ function BoardInner({ projects, selectedProjectId, setSelectedProjectId, selecte
             <select
               value={selectedProjectId || ''}
               onChange={(e) => setSelectedProjectId(e.target.value)}
-              disabled={scopedProject}
               className={clsx('h-9', 'px-3', 'rounded-xl', 'border', 'border-[#c3c5d7]', 'text-sm', 'focus:border-[#003fb1]', 'outline-none', 'bg-white')}
             >
               <option value="">Select project…</option>
@@ -403,6 +402,7 @@ function BoardInner({ projects, selectedProjectId, setSelectedProjectId, selecte
 // ─── Page wrapper — handles demo mode detection ───────────────────────────────
 export default function TaskBoard() {
   const { id: routeProjectId } = useParams();
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const demoMode = searchParams.get('demo') === 'true';
   const [projects, setProjects] = useState([]);
@@ -411,29 +411,35 @@ export default function TaskBoard() {
 
   useEffect(() => {
     if (!demoMode) {
-      if (routeProjectId) {
-        api.get(`/projects/${routeProjectId}`).then(({ data }) => {
-          setProjects(data.project ? [data.project] : []);
-          setSelectedProjectId(routeProjectId);
-        }).catch(() => {});
-      } else {
-        api.get('/projects').then(({ data }) => {
-          setProjects(data.projects || []);
-          if (data.projects?.length) setSelectedProjectId(data.projects[0].id);
-        }).catch(() => {});
-      }
+      // Always fetch all projects to allow switching in the board
+      api.get('/projects').then(({ data }) => {
+        setProjects(data.projects || []);
+      }).catch(() => {});
     }
-  }, [demoMode, routeProjectId]);
+  }, [demoMode]);
+
+  useEffect(() => {
+    if (routeProjectId) {
+      setSelectedProjectId(routeProjectId);
+    } else if (projects.length > 0) {
+      setSelectedProjectId(projects[0].id);
+    }
+  }, [routeProjectId, projects]);
+
+  const handleProjectSwitch = (newId) => {
+    if (newId) navigate(`/projects/${newId}/tasks${demoMode ? '?demo=true' : ''}`);
+    else navigate(`/tasks${demoMode ? '?demo=true' : ''}`);
+  };
 
   return (
     <TaskProvider demoMode={demoMode}>
-      <Layout activePath={routeProjectId ? `/projects/${routeProjectId}/tasks` : '/tasks'} projectId={routeProjectId || selectedProjectId}>
+      <Layout activePath={routeProjectId ? `/projects/${routeProjectId}/tasks` : '/tasks'} projectId={selectedProjectId}>
         <BoardInner
           projects={projects}
           selectedProjectId={selectedProjectId}
-          setSelectedProjectId={setSelectedProjectId}
+          setSelectedProjectId={handleProjectSwitch}
           selectedProject={selectedProject}
-          scopedProject={Boolean(routeProjectId)}
+          scopedProject={false}
         />
       </Layout>
     </TaskProvider>

@@ -88,6 +88,42 @@ router.get('/activity', authenticate, async (req, res) => {
   }
 });
 
+// POST /api/agents/coordination/activity - Log AI workbench activity
+router.post('/activity', authenticate, async (req, res) => {
+  try {
+    const { projectId, actionType, status = 'success', timestamp, metadata = {} } = req.body;
+
+    if (!projectId || !actionType) {
+      return res.status(400).json({ error: 'projectId and actionType are required' });
+    }
+
+    const eventType = `ai_workbench.${String(actionType).toLowerCase().replace(/[^a-z0-9]+/g, '_')}`;
+    const result = await pool.query(
+      `INSERT INTO activity_log (project_id, actor_id, event_type, metadata)
+       VALUES ($1, $2, $3, $4)
+       RETURNING *`,
+      [
+        projectId,
+        req.user.id,
+        eventType,
+        {
+          ...metadata,
+          timestamp: timestamp || new Date().toISOString(),
+          userId: req.user.id,
+          role: req.user.role,
+          actionType,
+          status,
+        },
+      ]
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error('[CoordinationAgent] Activity log error:', err);
+    res.status(500).json({ error: 'Failed to log activity' });
+  }
+});
+
 // Register Event Consumers to log cross-agent activity
 eventBroker.subscribe('task.assigned', 'CoordinationAgent', async (payload) => {
   try {

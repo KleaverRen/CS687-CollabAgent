@@ -124,23 +124,55 @@ export function TaskProvider({ children, demoMode = false }) {
     const { action } = suggestion;
     if (!action) return;
 
+    // 1. Handle single task updates (Status, Priority, Assignee)
     if (action.patch_task_id) {
-      await updateTask(action.patch_task_id, {
-        ...(action.status    && { status: action.status }),
-        ...(action.priority  && { priority: action.priority }),
-        ...(action.assigned_to && { assigned_to: action.assigned_to }),
-      });
+      const patch = {};
+      if (action.status) patch.status = action.status;
+      if (action.priority) patch.priority = action.priority;
+      if (action.assigned_to) patch.assigned_to = action.assigned_to;
+      
+      await updateTask(action.patch_task_id, patch);
     }
+
+    // 2. Handle task splitting (Create multiple subtasks)
+    if (action.create_subtasks && action.parent_task_id) {
+      const parentTask = tasks.find((t) => t.id === action.parent_task_id);
+      const projectId = parentTask?.project_id || selectedProjectId;
+
+      if (projectId) {
+        // Create subtasks sequentially
+        for (const subtaskTitle of action.create_subtasks) {
+          await createTask({
+            project_id: projectId,
+            title: subtaskTitle,
+            description: parentTask ? `Subtask of: ${parentTask.title}` : 'AI suggested subtask',
+            priority: parentTask?.priority || 'medium',
+            assigned_to: parentTask?.assigned_to || null,
+          });
+        }
+        // Mark the parent task as done since it has been successfully split into subtasks
+        await updateTask(action.parent_task_id, { status: 'done' });
+      }
+    }
+
     setSuggestions((prev) => prev.filter((s) => s !== suggestion));
     toast.success('Suggestion applied!');
-  }, [updateTask]);
+  }, [updateTask, createTask, tasks, selectedProjectId]);
 
   // ── Run AI analysis ───────────────────────────────────────────────────────
   const runAI = useCallback(async (projectId, taskId = null) => {
     if (isDemo.current) {
       setAiLoading(true);
       await new Promise((r) => setTimeout(r, 900)); // simulate latency
-      setSuggestions(DEMO_SUGGESTIONS);
+
+      // Filter out suggestions that apply to tasks that are now 'done'
+      const filtered = DEMO_SUGGESTIONS.filter((s) => {
+        const targetId = s.action?.patch_task_id || s.action?.parent_task_id || s.task_id;
+        const task = tasks.find(t => t.id === targetId);
+        return !task || task.status !== 'done';
+      });
+
+      setSuggestions(filtered);
       setAiLoading(false);
       return;
     }
@@ -154,7 +186,7 @@ export function TaskProvider({ children, demoMode = false }) {
     } finally {
       setAiLoading(false);
     }
-  }, []);
+  }, [tasks]);
 
   const value = {
     tasks, edges, suggestions, members: demoMode ? DEMO_MEMBERS : [],
