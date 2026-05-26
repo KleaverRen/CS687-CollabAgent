@@ -78,7 +78,7 @@ router.get('/risks', authenticate, async (req, res) => {
 // GET /api/agents/progress/report - Generate a narrative progress report via LLM
 router.get('/report', authenticate, async (req, res) => {
   try {
-    const { projectId } = req.query;
+    const { projectId, provider = null } = req.query;
     if (!projectId) return res.status(400).json({ error: 'projectId is required' });
 
     // Gather raw data for the LLM
@@ -107,7 +107,7 @@ Format:
 ### Risk Assessment & Recommendations
 [Paragraph]`;
 
-    const reportMarkdown = await generationService.generateText(systemPrompt, `Data context:\n${statsContext}`, fallbackReport);
+    const reportMarkdown = await generationService.generateText(systemPrompt, `Data context:\n${statsContext}`, fallbackReport, provider || null);
 
     res.json({ report: reportMarkdown });
   } catch (err) {

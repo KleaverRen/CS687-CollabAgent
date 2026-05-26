@@ -10,6 +10,7 @@ const userRoutes = require("./routes/users");
 const taskRoutes = require("./routes/tasks");
 const aiRoutes = require("./routes/ai_suggestions");
 const ragRoutes = require("./routes/rag");
+const notificationRoutes = require("./routes/notifications");
 const agentTaskRoutes = require("./routes/agents/task");
 const coordinationRoutes = require("./routes/agents/coordination");
 const feedbackRoutes = require("./routes/agents/feedback");
@@ -17,6 +18,8 @@ const progressRoutes = require("./routes/agents/progress");
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+
+app.set("trust proxy", 1);
 
 // Security middleware
 app.use(helmet());
@@ -62,6 +65,7 @@ app.use("/api/users", userRoutes);
 app.use("/api/tasks", taskRoutes);
 app.use("/api/ai", aiRoutes);
 app.use("/api/agents/rag", ragRoutes);
+app.use("/api/notifications", notificationRoutes);
 app.use("/api/agents/task", agentTaskRoutes);
 app.use("/api/agents/coordination", coordinationRoutes);
 app.use("/api/agents/feedback", feedbackRoutes);

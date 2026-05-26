@@ -7,13 +7,14 @@ const generationService = require('../../services/generationService');
 
 function normalizePriority(priority) {
   const normalized = String(priority || 'medium').toLowerCase();
-  return ['low', 'medium', 'high', 'urgent'].includes(normalized) ? normalized : 'medium';
+  if (normalized === 'urgent') return 'critical';
+  return ['low', 'medium', 'high', 'critical'].includes(normalized) ? normalized : 'medium';
 }
 
 // POST /api/agents/coordination/meeting - Summarize meeting and extract tasks
 router.post('/meeting', authenticate, async (req, res) => {
   try {
-    const { transcript, projectId } = req.body;
+    const { transcript, projectId, provider = null } = req.body;
     
     if (!transcript || !projectId) {
       return res.status(400).json({ error: 'Transcript and projectId are required' });
@@ -35,7 +36,7 @@ Produce a response strictly in valid JSON format containing:
 
 Format strictly as JSON.`;
 
-    const parsed = await generationService.generateJson(systemPrompt, `Transcript:\n${transcript}`, fallbackResult);
+    const parsed = await generationService.generateJson(systemPrompt, `Transcript:\n${transcript}`, fallbackResult, provider);
     const summary = parsed.summary || fallbackResult.summary;
     const actionItemDrafts = (Array.isArray(parsed.action_items) ? parsed.action_items : fallbackResult.action_items)
       .map(item => ({

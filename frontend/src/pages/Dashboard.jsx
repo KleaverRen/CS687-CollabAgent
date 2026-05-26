@@ -7,6 +7,40 @@ import NewProjectModal from "../components/NewProjectModal";
 import ProjectCard from "../components/ProjectCard";
 import toast from "react-hot-toast";
 
+function DeleteConfirmationModal({ projectName, onConfirm, onClose, loading }) {
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl p-7 w-full max-w-md shadow-xl animate-fadeIn">
+        <div className="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center mb-5">
+          <svg className="w-6 h-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+        </div>
+        <h3 className="text-xl font-bold text-[#191c1d] mb-2">Delete Project</h3>
+        <p className="text-sm text-[#555f6d] mb-6">
+          Are you sure you want to delete <span className="font-bold text-[#191c1d]">"{projectName}"</span>? 
+          This action is permanent and will remove all associated tasks, documents, and agent logs.
+        </p>
+        <div className="flex gap-3">
+          <button 
+            onClick={onClose}
+            className="flex-1 h-11 text-sm font-semibold border border-[#c3c5d7] rounded-xl hover:bg-[#f3f4f5] transition-colors"
+          >
+            Cancel
+          </button>
+          <button 
+            onClick={onConfirm}
+            disabled={loading}
+            className="flex-1 h-11 bg-[#ba1a1a] text-white text-sm font-bold rounded-xl hover:bg-[#931515] disabled:opacity-60 transition-colors"
+          >
+            {loading ? 'Deleting...' : 'Delete Project'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function StatCard({ label, value, color, icon }) {
   return (
     <div className="bg-white border border-[#e1e3e4] rounded-2xl p-5 flex items-center gap-4">
@@ -30,6 +64,8 @@ export default function Dashboard() {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showNewProject, setShowNewProject] = useState(false);
+  const [projectToDelete, setProjectToDelete] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     const fetch = async () => {
@@ -49,15 +85,23 @@ export default function Dashboard() {
     fetch();
   }, []);
 
-  const handleDelete = async (id) => {
-    if (!window.confirm("Delete this project? This action cannot be undone."))
-      return;
+  const handleDeleteClick = (id) => {
+    const project = projects.find(p => p.id === id);
+    if (project) setProjectToDelete(project);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!projectToDelete) return;
+    setIsDeleting(true);
     try {
-      await api.delete(`/projects/${id}`);
-      setProjects(projects.filter((p) => p.id !== id));
+      await api.delete(`/projects/${projectToDelete.id}`);
+      setProjects(projects.filter((p) => p.id !== projectToDelete.id));
       toast.success("Project deleted.");
+      setProjectToDelete(null);
     } catch {
       toast.error("Failed to delete project.");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -190,7 +234,7 @@ export default function Dashboard() {
               <ProjectCard
                 key={p.id}
                 project={p}
-                onDelete={isAdvisor ? handleDelete : null}
+                onDelete={isAdvisor ? handleDeleteClick : null}
               />
             ))}
           </div>
@@ -201,6 +245,15 @@ export default function Dashboard() {
         <NewProjectModal
           onClose={() => setShowNewProject(false)}
           onCreate={(p) => setProjects([p, ...projects])}
+        />
+      )}
+
+      {projectToDelete && (
+        <DeleteConfirmationModal 
+          projectName={projectToDelete.name}
+          loading={isDeleting}
+          onClose={() => setProjectToDelete(null)}
+          onConfirm={handleConfirmDelete}
         />
       )}
     </Layout>

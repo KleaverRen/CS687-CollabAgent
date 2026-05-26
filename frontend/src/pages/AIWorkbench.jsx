@@ -11,6 +11,7 @@ import {
   ClipboardList,
   FileText,
   Image,
+  Loader2,
   Mic,
   MoreHorizontal,
   Paperclip,
@@ -47,6 +48,10 @@ const statusClass = {
   Searching: 'bg-[#84efbd] text-[#005438]',
   Idle: 'bg-[#dfe3e8] text-[#434654]',
   Ready: 'bg-[#e8ddff] text-[#4f2ca1]',
+  Running: 'bg-[#1f5de8] text-white',
+  Queued: 'bg-[#fff3c4] text-[#6b4d00]',
+  Draft: 'bg-[#dbeafe] text-[#003fb1]',
+  Complete: 'bg-[#84efbd] text-[#005438]',
 };
 
 const toneClass = {
@@ -67,6 +72,8 @@ const actionLabels = {
   'confirm-task': 'Task Confirmation',
 };
 
+const workbenchStateVersion = 1;
+
 const getSessionGreeting = () => ([{
   id: `agent-${Date.now()}`,
   sender: 'agent',
@@ -74,6 +81,38 @@ const getSessionGreeting = () => ([{
   timestamp: new Date().toISOString(),
   text: 'Fresh AI agent session initialized. Select an agent or send a prompt to start a new workbench run.',
 }]);
+
+class WorkbenchErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error, info) {
+    console.error('[AIWorkbench] Render failure:', error, info);
+  }
+
+  render() {
+    if (!this.state.hasError) return this.props.children;
+
+    return (
+      <div className={clsx('m-6', 'rounded-lg', 'border', 'border-[#ffd1ce]', 'bg-[#fff7f6]', 'p-6', 'text-[#191c1d]')}>
+        <h2 className={clsx('text-lg', 'font-bold', 'text-[#a40000]')}>Something went wrong</h2>
+        <p className={clsx('mt-2', 'text-sm', 'leading-6')}>The AI Workbench could not render this view. Reload the page or reset this panel to continue.</p>
+        <button
+          className={clsx(primaryButton, 'mt-4')}
+          onClick={() => this.setState({ hasError: false })}
+        >
+          Reset panel
+        </button>
+      </div>
+    );
+  }
+}
 
 function ResultBlock({ title, children }) {
   if (!children) return null;
@@ -86,7 +125,44 @@ function ResultBlock({ title, children }) {
 }
 
 function LoadingText({ loading, idle }) {
-  return <span className={clsx('text-sm', 'text-[#737686]')}>{loading ? 'Running model...' : idle}</span>;
+  if (!loading) return <span className={clsx('text-sm', 'text-[#737686]')}>{idle}</span>;
+
+  return (
+    <div className={clsx('space-y-3')}>
+      <div className={clsx('flex', 'items-center', 'gap-2', 'text-sm', 'font-semibold', 'text-[#303846]')}>
+        <Loader2 className={clsx('h-4', 'w-4', 'animate-spin', 'text-[#0b47c2]')} />
+        Running model...
+      </div>
+      <div className={clsx('space-y-2')}>
+        <div className={clsx('h-3', 'w-full', 'animate-pulse', 'rounded', 'bg-[#dfe5f4]')} />
+        <div className={clsx('h-3', 'w-5/6', 'animate-pulse', 'rounded', 'bg-[#e8ecf7]')} />
+        <div className={clsx('h-3', 'w-2/3', 'animate-pulse', 'rounded', 'bg-[#eef1f8]')} />
+      </div>
+    </div>
+  );
+}
+
+function StreamingMessage({ text }) {
+  const [visibleLength, setVisibleLength] = useState(text.length);
+
+  useEffect(() => {
+    setVisibleLength(0);
+    if (!text) return undefined;
+
+    const timer = window.setInterval(() => {
+      setVisibleLength((length) => {
+        if (length >= text.length) {
+          window.clearInterval(timer);
+          return length;
+        }
+        return Math.min(text.length, length + 4);
+      });
+    }, 16);
+
+    return () => window.clearInterval(timer);
+  }, [text]);
+
+  return <p>{text.slice(0, visibleLength)}</p>;
 }
 
 function AgentAvatar({ agent, className }) {
@@ -102,9 +178,12 @@ export default function AIWorkbench() {
   const { id: projectId } = useParams();
   const { user } = useAuth();
   const sessionIdRef = useRef('');
+  const restoredProjectRef = useRef('');
   const [activeTab, setActiveTab] = useState('rag');
   const [loadingAction, setLoadingAction] = useState('');
   const [selectedProvider, setSelectedProvider] = useState('auto');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [ingestionEvents, setIngestionEvents] = useState([]);
   const [chatMessages, setChatMessages] = useState(() => getSessionGreeting());
 
   const [docTitle, setDocTitle] = useState('');
@@ -114,6 +193,8 @@ export default function AIWorkbench() {
 
   const [taskRequest, setTaskRequest] = useState('');
   const [taskDraft, setTaskDraft] = useState(null);
+  const [taskDrafts, setTaskDrafts] = useState([]);
+  const [taskUpdateDraft, setTaskUpdateDraft] = useState(null);
 
   const [transcript, setTranscript] = useState('');
   const [meetingResult, setMeetingResult] = useState(null);
@@ -123,18 +204,43 @@ export default function AIWorkbench() {
   const [feedbackResult, setFeedbackResult] = useState(null);
 
   const [progressReport, setProgressReport] = useState('');
+  const [progressPrompt, setProgressPrompt] = useState('');
   const [isEditingReport, setIsEditingReport] = useState(false);
 
   const isAdvisor = user?.role?.toLowerCase() === 'advisor';
   const activeAgent = useMemo(() => tabs.find(tab => tab.id === activeTab) || tabs[0], [activeTab]);
+  const providerValue = selectedProvider === 'auto' ? null : selectedProvider;
 
   const agentDescriptions = useMemo(() => ({
-    rag: ragAnswer ? 'Answer ready from indexed knowledge.' : docTitle || docContent ? 'Document ready to index.' : 'Indexing new research material.',
-    task: taskDraft ? 'Task draft prepared for confirmation.' : taskRequest ? 'Parsing natural language task request.' : 'Refining project milestones for Phase 2.',
+    rag: ragAnswer
+      ? 'Answer ready from indexed knowledge.'
+      : (docTitle || docContent)
+        ? 'Document ready to index.'
+        : 'Indexing new research material.',
+    task: taskUpdateDraft ? 'Existing task update prepared.' : taskDrafts.length ? `${taskDrafts.length} task drafts prepared.` : taskDraft ? 'Task draft prepared for confirmation.' : taskRequest ? 'Parsing natural language task request.' : 'Refining project milestones for Phase 2.',
     meeting: meetingResult ? 'Action items extracted from the latest sync.' : transcript ? 'Reviewing meeting transcript.' : 'Ready to align member schedules.',
     feedback: feedbackResult ? 'Advisor response template prepared.' : feedbackBody ? 'Analyzing advisor feedback.' : 'Awaiting draft submission.',
-    progress: progressReport ? 'Weekly advisor report generated.' : 'Monitoring progress signals.',
-  }), [docContent, docTitle, feedbackBody, feedbackResult, meetingResult, progressReport, ragAnswer, taskDraft, taskRequest, transcript]);
+    progress: progressReport ? 'Weekly advisor report generated.' : progressPrompt ? 'Report instructions ready.' : 'Monitoring progress signals.',
+  }), [docContent, docTitle, feedbackBody, feedbackResult, meetingResult, progressPrompt, progressReport, ragAnswer, taskDraft, taskDrafts.length, taskRequest, taskUpdateDraft, transcript]);
+
+  const agentStatuses = useMemo(() => {
+    const statuses = {
+      rag: ragAnswer ? 'Complete' : (docTitle || docContent || ragQuery) ? 'Ready' : 'Idle',
+      task: taskUpdateDraft || taskDraft || taskDrafts.length ? 'Draft' : taskRequest ? 'Ready' : 'Idle',
+      meeting: meetingResult ? 'Complete' : transcript ? 'Ready' : 'Idle',
+      feedback: feedbackResult ? 'Complete' : feedbackBody ? 'Ready' : 'Idle',
+      progress: progressReport ? 'Complete' : progressPrompt ? 'Ready' : 'Idle',
+    };
+
+    if (loadingAction === 'ingest') statuses.rag = 'Queued';
+    if (loadingAction === 'rag') statuses.rag = 'Running';
+    if (loadingAction === 'task' || loadingAction === 'confirm-task') statuses.task = 'Running';
+    if (loadingAction === 'meeting') statuses.meeting = 'Running';
+    if (loadingAction === 'feedback') statuses.feedback = 'Running';
+    if (loadingAction === 'progress') statuses.progress = 'Running';
+
+    return statuses;
+  }, [docContent, docTitle, feedbackBody, feedbackResult, loadingAction, meetingResult, progressPrompt, progressReport, ragAnswer, ragQuery, taskDraft, taskDrafts.length, taskRequest, taskUpdateDraft, transcript]);
 
   const logWorkbenchActivity = useCallback(async ({ actionType, status, metadata = {} }) => {
     if (!projectId) return;
@@ -159,26 +265,46 @@ export default function AIWorkbench() {
 
   useEffect(() => {
     sessionIdRef.current = `aiw-${projectId || 'global'}-${Date.now()}`;
-    localStorage.removeItem(`aiworkbench:${projectId}:chat`);
-    localStorage.removeItem(`aiworkbench:${projectId}:draft`);
+    restoredProjectRef.current = '';
 
-    setActiveTab('rag');
+    const savedStateKey = `aiworkbench:${projectId || 'global'}:state`;
+    const savedState = sessionStorage.getItem(savedStateKey);
+    let nextState = null;
+    try {
+      nextState = savedState ? JSON.parse(savedState) : null;
+    } catch {
+      sessionStorage.removeItem(savedStateKey);
+    }
+
+    setActiveTab(nextState?.activeTab || 'rag');
     setLoadingAction('');
-    setSelectedProvider('auto');
-    setDocTitle('');
-    setDocContent('');
-    setRagQuery('');
-    setRagAnswer(null);
-    setTaskRequest('');
-    setTaskDraft(null);
-    setTranscript('');
-    setMeetingResult(null);
-    setFeedbackBody('');
-    setFeedbackSeverity('medium');
-    setFeedbackResult(null);
-    setProgressReport('');
+    setSelectedProvider(nextState?.selectedProvider || 'auto');
+    setSearchTerm(nextState?.searchTerm || '');
+    setIngestionEvents(nextState?.ingestionEvents || []);
+    setDocTitle(nextState?.docTitle || '');
+    setDocContent(nextState?.docContent || '');
+    setRagQuery(nextState?.ragQuery || '');
+    setRagAnswer(nextState?.ragAnswer || null);
+    setTaskRequest(nextState?.taskRequest || '');
+    setTaskDraft(nextState?.taskDraft || null);
+    setTaskDrafts(nextState?.taskDrafts || []);
+    setTaskUpdateDraft(nextState?.taskUpdateDraft || null);
+    setTranscript(nextState?.transcript || '');
+    setMeetingResult(nextState?.meetingResult ? {
+      ...nextState.meetingResult,
+      actionItemDrafts: nextState.meetingResult.actionItemDrafts?.map((item, index) => ({
+        ...item,
+        id: item.id || `meeting-action-restored-${index}`,
+      })),
+    } : null);
+    setFeedbackBody(nextState?.feedbackBody || '');
+    setFeedbackSeverity(nextState?.feedbackSeverity || 'medium');
+    setFeedbackResult(nextState?.feedbackResult || null);
+    setProgressReport(nextState?.progressReport || '');
+    setProgressPrompt(nextState?.progressPrompt || '');
     setIsEditingReport(false);
-    setChatMessages(getSessionGreeting());
+    setChatMessages(nextState?.chatMessages?.length ? nextState.chatMessages : getSessionGreeting());
+    restoredProjectRef.current = projectId || 'global';
 
     if (projectId && user?.id) {
       api.post('/agents/coordination/activity', {
@@ -196,6 +322,57 @@ export default function AIWorkbench() {
       }).catch((err) => console.error('[AIWorkbench] Failed to log session initialization:', err));
     }
   }, [projectId, user?.id, user?.role]);
+
+  useEffect(() => {
+    if (restoredProjectRef.current !== (projectId || 'global')) return;
+
+    sessionStorage.setItem(`aiworkbench:${projectId || 'global'}:state`, JSON.stringify({
+      version: workbenchStateVersion,
+      activeTab,
+      selectedProvider,
+      searchTerm,
+      ingestionEvents: ingestionEvents.slice(-20),
+      chatMessages,
+      docTitle,
+      docContent,
+      ragQuery,
+      ragAnswer,
+      taskRequest,
+      taskDraft,
+      taskDrafts,
+      taskUpdateDraft,
+      transcript,
+      meetingResult,
+      feedbackBody,
+      feedbackSeverity,
+      feedbackResult,
+      progressReport,
+      progressPrompt,
+    }));
+  }, [activeTab, chatMessages, docContent, docTitle, feedbackBody, feedbackResult, feedbackSeverity, ingestionEvents, meetingResult, progressPrompt, progressReport, projectId, ragAnswer, ragQuery, searchTerm, selectedProvider, taskDraft, taskDrafts, taskRequest, taskUpdateDraft, transcript]);
+
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token || !projectId) return undefined;
+
+    const stream = new EventSource(`/api/agents/rag/events/stream?token=${encodeURIComponent(token)}`);
+
+    stream.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        if (payload?.payload?.projectId && payload.payload.projectId !== projectId) return;
+        setIngestionEvents((events) => [payload, ...events].slice(0, 20));
+      } catch (err) {
+        console.error('[AIWorkbench] Failed to parse RAG event:', err);
+      }
+    };
+
+    stream.onerror = () => {
+      stream.close();
+    };
+
+    return () => stream.close();
+  }, [projectId]);
 
   const appendUserMessage = (text) => {
     setChatMessages((messages) => [
@@ -241,13 +418,14 @@ export default function AIWorkbench() {
     const actionType = actionLabels[key] || 'Agent Request';
     try {
       const result = await action();
-      if (result === false) return;
+      if (result === false) return false;
       await logWorkbenchActivity({
         actionType: 'Agent Response',
         status: 'success',
         metadata: { workflow: key, responseType: actionType },
       });
       appendAgentMessage(`${activeAgent.label} completed ${actionType.toLowerCase()}. Review the generated output below.`, activeTab);
+      return true;
     } catch (err) {
       await logWorkbenchActivity({
         actionType: 'Agent Response',
@@ -259,6 +437,7 @@ export default function AIWorkbench() {
         },
       });
       toast.error(err.response?.data?.error || 'AI request failed.');
+      return false;
     } finally {
       setLoadingAction('');
     }
@@ -288,31 +467,82 @@ export default function AIWorkbench() {
       query: ragQuery,
       projectId,
       limit: 3,
-      provider: selectedProvider === 'auto' ? null : selectedProvider,
+      provider: providerValue,
     });
     setRagAnswer(data);
   });
+
+  const shouldUpdateExistingTask = (request) => {
+    const text = String(request || '').toLowerCase();
+    if (/\b(create|new|add)\b/.test(text) && !/\b(existing|current|already|todo|to do)\b/.test(text)) return false;
+    return /\b(update|change|set|deadline|due|reassign)\b/.test(text)
+      || (/\b(assign)\b/.test(text) && /\b(task|todo|to do|existing|current|already)\b/.test(text));
+  };
 
   const parseTask = () => runAction('task', async () => {
     if (!taskRequest.trim()) {
       toast.error('Describe the task first.');
       return false;
     }
+
+    if (shouldUpdateExistingTask(taskRequest)) {
+      const { data } = await api.post('/agents/task/update-existing', {
+        request: taskRequest,
+        projectId,
+        provider: providerValue,
+      });
+      setTaskDraft(null);
+      setTaskDrafts([]);
+      setTaskUpdateDraft(data.updateDraft);
+      return true;
+    }
+
     const { data } = await api.post('/agents/task/parse', {
       request: taskRequest,
       projectId,
-      provider: selectedProvider === 'auto' ? null : selectedProvider,
+      provider: providerValue,
     });
-    setTaskDraft(data.draft);
+    setTaskUpdateDraft(null);
+    if (Array.isArray(data.drafts) && data.drafts.length) {
+      setTaskDraft(null);
+      setTaskDrafts(data.drafts);
+    } else {
+      setTaskDrafts([]);
+      setTaskDraft(data.draft);
+    }
   });
 
-  const confirmTask = (draft) => runAction('confirm-task', async () => {
-    await api.post('/agents/task/confirm', {
-      draft,
+  const confirmTask = (draft, assignToSelf = false) => runAction('confirm-task', async () => {
+    const { data } = await api.post('/agents/task/confirm', {
+      draft: assignToSelf ? { ...draft, assignee_name: 'me' } : draft,
       projectId,
       user_confirmed: true,
     });
-    toast.success('Task created.');
+    toast.success(data.task?.assignee_name ? `Task assigned to ${data.task.assignee_name}.` : 'Task created.');
+  });
+
+  const confirmTaskDrafts = (drafts) => runAction('confirm-task', async () => {
+    const created = [];
+    for (const draft of drafts) {
+      const { data } = await api.post('/agents/task/confirm', {
+        draft,
+        projectId,
+        user_confirmed: true,
+      });
+      created.push(data.task);
+    }
+    setTaskDrafts([]);
+    toast.success(`${created.length} tasks created.`);
+  });
+
+  const confirmTaskUpdate = (updateDraft) => runAction('confirm-task', async () => {
+    const { data } = await api.post('/agents/task/update-existing/confirm', {
+      updateDraft,
+      projectId,
+      user_confirmed: true,
+    });
+    setTaskUpdateDraft(null);
+    toast.success(data.task?.assignee_name ? `Task updated for ${data.task.assignee_name}.` : 'Task updated.');
   });
 
   const summarizeMeeting = () => runAction('meeting', async () => {
@@ -323,8 +553,12 @@ export default function AIWorkbench() {
     const { data } = await api.post('/agents/coordination/meeting', {
       transcript,
       projectId,
-      provider: selectedProvider === 'auto' ? null : selectedProvider,
+      provider: providerValue,
     });
+    data.actionItemDrafts = data.actionItemDrafts?.map((item, index) => ({
+      ...item,
+      id: item.id || `meeting-action-${Date.now()}-${index}`,
+    }));
     setMeetingResult(data);
   });
 
@@ -338,20 +572,27 @@ export default function AIWorkbench() {
       body: feedbackBody,
       severity: feedbackSeverity,
       category: 'general',
-      provider: selectedProvider === 'auto' ? null : selectedProvider,
+      provider: providerValue,
     });
     setFeedbackResult(data);
     toast.success('Feedback recorded.');
   });
 
   const generateProgressReport = () => runAction('progress', async () => {
-    const { data } = await api.get(`/agents/progress/report?projectId=${projectId}&provider=${selectedProvider === 'auto' ? '' : selectedProvider}`);
+    const params = new URLSearchParams({ projectId });
+    if (providerValue) params.set('provider', providerValue);
+    const { data } = await api.get(`/agents/progress/report?${params.toString()}`);
     setProgressReport(data.report);
   });
 
-  const runActiveAgent = () => {
+  const runActiveAgent = async () => {
     const prompt = String(composerValue || '').trim();
-    appendUserMessage(prompt || `${activeAgent.label} requested.`);
+    if (activeTab !== 'progress' && !prompt) {
+      toast.error(`Enter a ${activeAgent.shortLabel.toLowerCase()} prompt first.`);
+      return;
+    }
+
+    appendUserMessage(prompt || `${activeAgent.label} requested a fresh progress report.`);
     logWorkbenchActivity({
       actionType: 'Chat Query',
       status: 'submitted',
@@ -361,11 +602,14 @@ export default function AIWorkbench() {
       },
     });
 
-    if (activeTab === 'rag') return askDocuments();
-    if (activeTab === 'task') return parseTask();
-    if (activeTab === 'meeting') return summarizeMeeting();
-    if (activeTab === 'feedback') return submitFeedback();
-    return generateProgressReport();
+    let completed = false;
+    if (activeTab === 'rag') completed = await askDocuments();
+    else if (activeTab === 'task') completed = await parseTask();
+    else if (activeTab === 'meeting') completed = await summarizeMeeting();
+    else if (activeTab === 'feedback') completed = await submitFeedback();
+    else completed = await generateProgressReport();
+
+    if (completed) clearActiveComposer();
   };
 
   const renderRag = () => (
@@ -380,6 +624,22 @@ export default function AIWorkbench() {
           </button>
         </div>
       </ResultBlock>
+
+      {ingestionEvents.length > 0 && (
+        <ResultBlock title="Ingestion Activity">
+          <div className="space-y-2">
+            {ingestionEvents.slice(0, 5).map((event) => (
+              <div key={event.event_id} className={clsx('flex', 'items-center', 'justify-between', 'gap-3', 'rounded-lg', 'bg-[#f3f6ff]', 'p-3', 'text-xs', 'text-[#434654]')}>
+                <div>
+                  <div className={clsx('font-bold', 'text-[#191c1d]')}>{event.topic}</div>
+                  <div className="mt-1">{event.payload?.title || event.payload?.documentId || 'Project knowledge event'}</div>
+                </div>
+                <time className={clsx('shrink-0', 'font-semibold')}>{new Date(event.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time>
+              </div>
+            ))}
+          </div>
+        </ResultBlock>
+      )}
 
       <ResultBlock title="Knowledge Response">
         {ragAnswer ? (
@@ -404,17 +664,53 @@ export default function AIWorkbench() {
   );
 
   const renderTask = () => (
-    <ResultBlock title="Generated Task">
-      {taskDraft ? (
+    <ResultBlock title={taskUpdateDraft ? 'Existing Task Update' : taskDrafts.length ? 'Generated Task List' : 'Generated Task'}>
+      {taskUpdateDraft ? (
+        <div className="space-y-3">
+          <dl className={clsx('grid', 'gap-3', 'text-sm')}>
+            <div><dt className={clsx('text-xs', 'font-bold', 'uppercase', 'text-[#737686]')}>Task</dt><dd className={clsx('mt-1', 'text-[#191c1d]')}>{taskUpdateDraft.title}</dd></div>
+            <div><dt className={clsx('text-xs', 'font-bold', 'uppercase', 'text-[#737686]')}>Assignee</dt><dd className={clsx('mt-1', 'text-[#191c1d]')}>{taskUpdateDraft.assignee_name || taskUpdateDraft.currentAssigneeName || 'Unassigned'}</dd></div>
+            <div><dt className={clsx('text-xs', 'font-bold', 'uppercase', 'text-[#737686]')}>Deadline</dt><dd className={clsx('mt-1', 'text-[#191c1d]')}>{taskUpdateDraft.deadline || (taskUpdateDraft.currentDeadline ? taskUpdateDraft.currentDeadline.slice(0, 10) : 'No deadline')}</dd></div>
+          </dl>
+          <button className={secondaryButton} disabled={loadingAction === 'confirm-task'} onClick={() => confirmTaskUpdate(taskUpdateDraft)}>
+            <Check className={clsx('h-4', 'w-4')} />
+            Apply Update
+          </button>
+        </div>
+      ) : taskDrafts.length ? (
+        <div className="space-y-4">
+          <div className={clsx('flex', 'items-center', 'justify-between', 'gap-3')}>
+            <p className={clsx('text-sm', 'font-semibold', 'text-[#191c1d]')}>{taskDrafts.length} task drafts ready for review.</p>
+            <button className={secondaryButton} disabled={loadingAction === 'confirm-task'} onClick={() => confirmTaskDrafts(taskDrafts)}>
+              <Check className={clsx('h-4', 'w-4')} />
+              Create All
+            </button>
+          </div>
+          <div className="space-y-3">
+            {taskDrafts.map((draft, index) => (
+              <div key={`${draft.title}-${index}`} className={clsx('rounded-lg', 'border', 'border-[#d5d9e7]', 'bg-[#f8f9fb]', 'p-4')}>
+                <div className={clsx('flex', 'flex-wrap', 'items-start', 'justify-between', 'gap-3')}>
+                  <div>
+                    <p className={clsx('text-xs', 'font-bold', 'uppercase', 'tracking-wide', 'text-[#737686]')}>{draft.metadata?.workstream || 'General'}</p>
+                    <h4 className={clsx('mt-1', 'text-sm', 'font-bold', 'text-[#191c1d]')}>{draft.title}</h4>
+                  </div>
+                  <span className={clsx('rounded-full', 'bg-white', 'px-3', 'py-1', 'text-xs', 'font-bold', 'capitalize', 'text-[#003fb1]', 'ring-1', 'ring-[#c8cde0]')}>{draft.priority}</span>
+                </div>
+                <p className={clsx('mt-3', 'whitespace-pre-wrap', 'text-sm', 'leading-6', 'text-[#434654]')}>{draft.description}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : taskDraft ? (
         <div className="space-y-3">
           <dl className={clsx('grid', 'gap-3', 'text-sm')}>
             <div><dt className={clsx('text-xs', 'font-bold', 'uppercase', 'text-[#737686]')}>Title</dt><dd className={clsx('mt-1', 'text-[#191c1d]')}>{taskDraft.title}</dd></div>
             <div><dt className={clsx('text-xs', 'font-bold', 'uppercase', 'text-[#737686]')}>Priority</dt><dd className={clsx('mt-1', 'capitalize', 'text-[#191c1d]')}>{taskDraft.priority}</dd></div>
             <div><dt className={clsx('text-xs', 'font-bold', 'uppercase', 'text-[#737686]')}>Assignee</dt><dd className={clsx('mt-1', 'text-[#191c1d]')}>{taskDraft.assignee_name || 'Unassigned'}</dd></div>
           </dl>
-          <button className={secondaryButton} disabled={loadingAction === 'confirm-task'} onClick={() => confirmTask(taskDraft)}>
+          <button className={secondaryButton} disabled={loadingAction === 'confirm-task'} onClick={() => confirmTask(taskDraft, !taskDraft.assignee_name)}>
             <Check className={clsx('h-4', 'w-4')} />
-            Create Task
+            {taskDraft.assignee_name ? 'Create Task' : 'Assign to Me'}
           </button>
         </div>
       ) : (
@@ -429,15 +725,15 @@ export default function AIWorkbench() {
         <div className="space-y-4">
           <p className={clsx('text-sm', 'leading-6', 'text-[#191c1d]')}>{meetingResult.summary}</p>
           <div className="space-y-2">
-            {meetingResult.actionItemDrafts?.map((item, index) => (
-              <div key={`${item.title}-${index}`} className={clsx('flex', 'flex-col', 'gap-3', 'rounded-lg', 'bg-[#f3f6ff]', 'p-3', 'sm:flex-row', 'sm:items-center', 'sm:justify-between')}>
+            {meetingResult.actionItemDrafts?.map((item) => (
+              <div key={item.id} className={clsx('flex', 'flex-col', 'gap-3', 'rounded-lg', 'bg-[#f3f6ff]', 'p-3', 'sm:flex-row', 'sm:items-center', 'sm:justify-between')}>
                 <div>
                   <div className={clsx('text-sm', 'font-semibold', 'text-[#191c1d]')}>{item.title}</div>
                   <div className={clsx('text-xs', 'capitalize', 'text-[#737686]')}>{item.priority} priority · {item.assignee_name || 'Unassigned'}</div>
                 </div>
-                <button className={secondaryButton} disabled={loadingAction === 'confirm-task'} onClick={() => confirmTask(item)}>
+                <button className={secondaryButton} disabled={loadingAction === 'confirm-task'} onClick={() => confirmTask(item, !item.assignee_name)}>
                   <Check className={clsx('h-4', 'w-4')} />
-                  Create
+                  {item.assignee_name ? 'Create' : 'Assign to Me'}
                 </button>
               </div>
             ))}
@@ -451,16 +747,16 @@ export default function AIWorkbench() {
 
   const renderFeedback = () => (
     <div className="space-y-4">
-      <div>
-        <label className={labelClass}>Severity</label>
-        <select className={fieldClass} value={feedbackSeverity} onChange={(e) => setFeedbackSeverity(e.target.value)}>
-          <option value="low">Low</option>
-          <option value="medium">Medium</option>
-          <option value="high">High</option>
-          <option value="urgent">Urgent</option>
-        </select>
-      </div>
       <ResultBlock title="Suggested Response">
+        <div className={clsx('mb-4', 'max-w-xs')}>
+          <label className={labelClass}>Severity</label>
+          <select className={fieldClass} value={feedbackSeverity} onChange={(e) => setFeedbackSeverity(e.target.value)}>
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+            <option value="urgent">Urgent</option>
+          </select>
+        </div>
         {feedbackResult ? (
           <div className="space-y-4">
             <div>
@@ -513,7 +809,7 @@ export default function AIWorkbench() {
     task: taskRequest,
     meeting: transcript,
     feedback: feedbackBody,
-    progress: progressReport,
+    progress: progressPrompt,
   }[activeTab];
 
   const updateComposer = (value) => {
@@ -521,17 +817,42 @@ export default function AIWorkbench() {
     if (activeTab === 'task') setTaskRequest(value);
     if (activeTab === 'meeting') setTranscript(value);
     if (activeTab === 'feedback') setFeedbackBody(value);
-    if (activeTab === 'progress') setProgressReport(value);
+    if (activeTab === 'progress') setProgressPrompt(value);
   };
+
+  const clearActiveComposer = () => {
+    if (activeTab === 'rag') setRagQuery('');
+    if (activeTab === 'task') setTaskRequest('');
+    if (activeTab === 'meeting') setTranscript('');
+    if (activeTab === 'feedback') setFeedbackBody('');
+    if (activeTab === 'progress') setProgressPrompt('');
+  };
+
+  const normalizedSearch = searchTerm.trim().toLowerCase();
+  const visibleTabs = normalizedSearch
+    ? tabs.filter((agent) => `${agent.label} ${agent.shortLabel} ${agentDescriptions[agent.id]} ${agentStatuses[agent.id]}`.toLowerCase().includes(normalizedSearch))
+    : tabs;
+  const visibleMessages = normalizedSearch
+    ? chatMessages.filter((message) => {
+      const messageAgent = tabs.find(tab => tab.id === message.agentId);
+      return `${message.text} ${messageAgent?.label || ''}`.toLowerCase().includes(normalizedSearch);
+    })
+    : chatMessages;
 
   return (
     <Layout activePath={`/projects/${projectId}/ai`} projectId={projectId}>
+      <WorkbenchErrorBoundary>
       <div className={clsx('flex', 'min-h-full', 'flex-col', 'bg-[#f8f9fb]')}>
         <header className={clsx('flex', 'min-h-20', 'flex-col', 'gap-4', 'border-b', 'border-[#c8cde0]', 'bg-white', 'px-5', 'py-4', 'xl:flex-row', 'xl:items-center', 'xl:justify-between')}>
-          <div className={clsx('flex', 'w-full', 'max-w-2xl', 'items-center', 'gap-3', 'rounded-2xl', 'bg-[#f3f4f5]', 'px-4', 'py-3', 'text-[#5f6b7a]')}>
+          <label className={clsx('flex', 'w-full', 'max-w-2xl', 'items-center', 'gap-3', 'rounded-2xl', 'bg-[#f3f4f5]', 'px-4', 'py-3', 'text-[#5f6b7a]', 'focus-within:ring-2', 'focus-within:ring-[#0b47c2]/20')}>
             <Search className={clsx('h-5', 'w-5', 'shrink-0', 'text-[#1f2937]')} />
-            <span className={clsx('truncate', 'text-sm', 'md:text-base')}>Search across agents and knowledge base...</span>
-          </div>
+            <input
+              className={clsx('w-full', 'bg-transparent', 'text-sm', 'text-[#191c1d]', 'outline-none', 'placeholder:text-[#5f6b7a]', 'md:text-base')}
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search agents, messages, and knowledge activity..."
+            />
+          </label>
           <div className={clsx('flex', 'items-center', 'justify-between', 'gap-4', 'xl:justify-end')}>
             <select
               value={selectedProvider}
@@ -567,8 +888,9 @@ export default function AIWorkbench() {
               <p className={clsx('mt-2', 'text-sm', 'text-[#191c1d]')}>Manage specialized collaboration agents.</p>
             </div>
             <div className={clsx('flex-1', 'space-y-4', 'overflow-y-auto', 'p-5')}>
-              {tabs.map((agent) => {
+              {visibleTabs.map((agent) => {
                 const active = activeTab === agent.id;
+                const status = agentStatuses[agent.id] || 'Idle';
                 return (
                   <button
                     key={agent.id}
@@ -580,13 +902,18 @@ export default function AIWorkbench() {
                   >
                     <div className={clsx('flex', 'items-start', 'justify-between', 'gap-3')}>
                       <AgentAvatar agent={agent} />
-                      <span className={clsx('rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide', statusClass[agent.status])}>{agent.status}</span>
+                      <span className={clsx('rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide', statusClass[status])}>{status}</span>
                     </div>
                     <h2 className={clsx('mt-3', 'text-sm', 'font-bold', 'tracking-[0.08em]', 'text-[#001f8f]')}>{agent.label}</h2>
                     <p className={clsx('mt-2', 'line-clamp-2', 'text-sm', 'leading-5', 'text-[#3f4654]')}>{agentDescriptions[agent.id]}</p>
                   </button>
                 );
               })}
+              {visibleTabs.length === 0 && (
+                <div className={clsx('rounded-lg', 'border', 'border-[#c8cde0]', 'bg-[#f8f9fb]', 'p-4', 'text-sm', 'text-[#434654]')}>
+                  No agents match the current search.
+                </div>
+              )}
             </div>
             <div className={clsx('border-t', 'border-[#c8cde0]', 'p-5')}>
               <button className={clsx('flex', 'h-12', 'w-full', 'items-center', 'justify-center', 'gap-2', 'rounded', 'border', 'border-[#0b47c2]', 'bg-white', 'text-base', 'font-semibold', 'text-[#0b47c2]', 'hover:bg-[#f1f5ff]')}>
@@ -608,9 +935,9 @@ export default function AIWorkbench() {
                 </div>
                 <p className={clsx('hidden', 'max-w-48', 'text-sm', 'italic', 'leading-5', 'text-[#303846]', 'md:block')}>{activeAgent.label} is summarizing context...</p>
               </div>
-              <button className={secondaryButton} onClick={() => handleToolSwitch('task')}>
+              <button className={secondaryButton} onClick={runActiveAgent} disabled={Boolean(loadingAction)}>
                 <Wand2 className={clsx('h-4', 'w-4', 'text-[#0b47c2]')} />
-                Summon Agent
+                Summon {activeAgent.shortLabel}
               </button>
             </div>
 
@@ -619,7 +946,7 @@ export default function AIWorkbench() {
                 Conversation initiated at {new Date(chatMessages[0]?.timestamp || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
               </div>
 
-              {chatMessages.map((message) => {
+              {visibleMessages.map((message) => {
                 const messageAgent = tabs.find(tab => tab.id === message.agentId) || activeAgent;
                 const timeLabel = new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
@@ -651,7 +978,7 @@ export default function AIWorkbench() {
                         <span className="text-[#303846]">{timeLabel}</span>
                       </div>
                       <div className={clsx('border-l-4', 'border-[#1f5de8]', 'bg-white', 'p-5', 'text-sm', 'leading-6', 'shadow-sm', 'ring-1', 'ring-[#1f5de8]', '2xl:text-base', '2xl:leading-7')}>
-                        <p>{message.text}</p>
+                        <StreamingMessage text={message.text} />
                         <div className={clsx('mt-4', 'rounded', 'bg-[#f1f5ff]', 'p-4', 'text-sm')}>
                           <p className={clsx('font-bold', 'uppercase', 'text-[#003fb1]')}>Proposed Action</p>
                           <p className={clsx('mt-1', 'italic')}>"{activeTab === 'rag' ? 'Search indexed documents for supporting evidence.' : activeTab === 'task' ? 'Convert this request into a structured project task.' : activeTab === 'meeting' ? 'Summarize coordination notes and extract action items.' : activeTab === 'feedback' ? 'Analyze advisor feedback and draft a response.' : 'Generate an advisor-ready weekly progress report.'}"</p>
@@ -661,6 +988,11 @@ export default function AIWorkbench() {
                   </div>
                 );
               })}
+              {visibleMessages.length === 0 && (
+                <div className={clsx('mx-auto', 'max-w-lg', 'rounded-lg', 'border', 'border-[#c8cde0]', 'bg-white', 'p-5', 'text-center', 'text-sm', 'text-[#434654]')}>
+                  No conversation messages match the current search.
+                </div>
+              )}
 
               {renderWorkflow()}
             </div>
@@ -776,6 +1108,7 @@ export default function AIWorkbench() {
           )}
         </div>
       </div>
+      </WorkbenchErrorBoundary>
     </Layout>
   );
 }

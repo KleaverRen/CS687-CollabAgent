@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { NotificationProvider } from './context/NotificationContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import LandingPage from './pages/LandingPage';
 import LoginPage from './pages/LoginPage';
@@ -97,23 +98,25 @@ export default function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <AppRoutes />
-        <Toaster
-          position="top-right"
-          toastOptions={{
-            duration: 4000,
-            style: {
-              background: '#fff',
-              color: '#191c1d',
-              border: '1px solid #c3c5d7',
-              borderRadius: '12px',
-              fontSize: '14px',
-              fontFamily: 'Inter, sans-serif',
-            },
-            success: { iconTheme: { primary: '#005438', secondary: '#fff' } },
-            error: { iconTheme: { primary: '#ba1a1a', secondary: '#fff' } },
-          }}
-        />
+        <NotificationProvider>
+          <AppRoutes />
+          <Toaster
+            position="top-right"
+            toastOptions={{
+              duration: 4000,
+              style: {
+                background: '#fff',
+                color: '#191c1d',
+                border: '1px solid #c3c5d7',
+                borderRadius: '12px',
+                fontSize: '14px',
+                fontFamily: 'Inter, sans-serif',
+              },
+              success: { iconTheme: { primary: '#005438', secondary: '#fff' } },
+              error: { iconTheme: { primary: '#ba1a1a', secondary: '#fff' } },
+            }}
+          />
+        </NotificationProvider>
       </AuthProvider>
     </BrowserRouter>
   );

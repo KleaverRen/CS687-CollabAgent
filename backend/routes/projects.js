@@ -3,6 +3,7 @@ const router = express.Router();
 const { body, query, validationResult } = require('express-validator');
 const pool = require('../config/database');
 const { authenticate } = require('../middleware/auth');
+const { recordProjectEvent } = require('../services/notificationService');
 
 // All project routes require auth
 router.use(authenticate);
@@ -54,6 +55,25 @@ async function updateProject(req, res) {
     );
     if (result.rows.length === 0)
       return res.status(404).json({ error: 'Project not found or unauthorized' });
+    await recordProjectEvent({
+      projectId: result.rows[0].id,
+      actorId: req.user.id,
+      eventType: 'project.updated',
+      entityType: 'project',
+      entityId: result.rows[0].id,
+      metadata: {
+        name: result.rows[0].name,
+        status: result.rows[0].status,
+        visibility: result.rows[0].visibility,
+      },
+      notification: {
+        type: 'project.updated',
+        category: status === 'archived' ? 'system' : 'updates',
+        title: `${result.rows[0].name} was updated`,
+        body: status ? `Project status changed to ${result.rows[0].status}.` : 'Project details were updated.',
+        actionUrl: `/projects/${result.rows[0].id}`,
+      },
+    });
     res.json({ project: result.rows[0] });
   } catch (err) {
     console.error(err);
@@ -133,6 +153,14 @@ router.post(
          VALUES ($1, $2, 'owner') ON CONFLICT DO NOTHING`,
         [result.rows[0].id, req.user.id]
       );
+      await recordProjectEvent({
+        projectId: result.rows[0].id,
+        actorId: req.user.id,
+        eventType: 'project.created',
+        entityType: 'project',
+        entityId: result.rows[0].id,
+        metadata: { name: result.rows[0].name, quarter: result.rows[0].quarter },
+      });
       res.status(201).json({ project: result.rows[0] });
     } catch (err) {
       console.error(err);
@@ -222,6 +250,28 @@ router.post(
          DO UPDATE SET member_role = EXCLUDED.member_role`,
         [req.params.id, student.rows[0].id, member_role]
       );
+
+      await recordProjectEvent({
+        projectId: req.params.id,
+        actorId: req.user.id,
+        eventType: 'project.member_added',
+        entityType: 'user',
+        entityId: student.rows[0].id,
+        metadata: {
+          memberRole: member_role,
+          memberName: student.rows[0].full_name,
+          memberEmail: student.rows[0].email,
+        },
+        notification: {
+          recipientIds: [student.rows[0].id],
+          skipActor: false,
+          type: 'project.assignment',
+          category: 'mentions',
+          title: `You were added to a project`,
+          body: `${req.user.full_name} added you as ${member_role}.`,
+          actionUrl: `/projects/${req.params.id}`,
+        },
+      });
 
       res.status(201).json({
         member: {

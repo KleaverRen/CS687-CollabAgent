@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import NotificationBell from './NotificationBell';
 
 export default function Sidebar({ isCollapsed, setIsCollapsed, activePath, projectId }) {
   const { user, logout } = useAuth();
@@ -46,7 +47,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, activePath, proje
   return (
     <>
       {/* Sidebar (desktop) */}
-      <aside className={`hidden md:flex flex-col fixed left-0 top-0 bottom-0 bg-white border-r border-[#e1e3e4] z-30 transition-all duration-300 ${isCollapsed ? 'w-20' : 'w-60'}`}>
+      <aside className={`hidden md:flex flex-col fixed left-0 top-0 bottom-0 bg-white border-r border-[#e1e3e4] z-30 transition-all duration-300 overflow-visible ${isCollapsed ? 'w-20' : 'w-60'}`}>
         <div className={`flex items-center px-5 py-4 border-b border-[#e1e3e4] h-16 ${isCollapsed ? 'justify-center' : 'justify-between'}`}>
           <div className="flex items-center gap-2.5 overflow-hidden">
             <svg className="w-6 h-6 text-[#003fb1] shrink-0" fill="currentColor" viewBox="0 0 24 24">
@@ -76,6 +77,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, activePath, proje
                 <p className="text-xs text-[#737686] truncate">{roleLabel[user?.role] || user?.role}</p>
               </div>
             )}
+            <NotificationBell compact={isCollapsed} align="left" vertical="up" />
           </div>
           <button onClick={handleLogout} title={isCollapsed ? 'Sign Out' : undefined}
             className={`h-9 flex items-center justify-center text-xs font-semibold text-[#ba1a1a] border border-[#e1e3e4] rounded-lg hover:bg-[#ffdad6] transition-colors ${isCollapsed ? 'px-0' : 'w-full'}`}>
@@ -107,6 +109,7 @@ export default function Sidebar({ isCollapsed, setIsCollapsed, activePath, proje
             <path strokeLinecap="round" strokeLinejoin="round" d={menuOpen ? "M6 18L18 6M6 6l12 12" : "M3.75 6.75h16.5M3.75 12h16.5M3.75 17.25h16.5"} />
           </svg>
         </button>
+        <NotificationBell compact />
         {menuOpen && (
           <div className="absolute top-14 left-0 right-0 bg-white border-b border-[#e1e3e4] p-4 space-y-2 shadow-lg">
             {[...globalItems, ...contextItems].map(item => (

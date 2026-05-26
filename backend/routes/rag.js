@@ -75,11 +75,11 @@ router.post(
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { query, projectId, limit = 3 } = req.body;
+    const { query, projectId, limit = 3, provider = null } = req.body;
 
     try {
       // Execute retrieval-augmented synthesis
-      const response = await generationService.generateAnswer(query, projectId, { limit });
+      const response = await generationService.generateAnswer(query, projectId, { limit, provider });
       res.json(response);
     } catch (err) {
       console.error('[RAG-Router] Query processing failed:', err);

@@ -278,6 +278,173 @@ NODE_ENV=production node server.js
 
 ---
 
+## AI Workbench
+
+### Overview
+
+The AI Workbench is a multi-agent orchestration hub where specialized AI agents collaborate to accelerate research project management. Each agent is designed for a distinct workflow — from ingesting knowledge and managing tasks to coordinating teams and analyzing progress. Agents can be selected from the sidebar, and you interact with them through a shared message composer. The right panel (Advisor View) provides an executive summary of project health.
+
+### Knowledge Agent
+
+The **Knowledge Agent** (powered by RAG — Retrieval-Augmented Generation) ingests research documents into a vector index and answers questions by retrieving relevant chunks from the indexed knowledge base. It supports OLLama, Groq, and Gemini as backend providers.
+
+**Capabilities:**
+- Index project documentation, research papers, and notes by title and content
+- Query the indexed knowledge base with natural language questions
+- See retrieved source snippets alongside the generated answer
+- Stream ingestion events in real time
+
+Example prompts:
+
+```
+What are the key findings from our Phase 1 experiments?
+```
+```
+Summarize the methodology described in the research proposal.
+```
+```
+Index this meeting notes document and tell me what action items were discussed.
+```
+```
+Compare our approach to the baseline method mentioned in the literature review.
+```
+
+---
+
+### Task Orchestrator
+
+The **Task Orchestrator** converts natural language requests into structured project tasks. It supports single-task creation, bulk task breakdown from project plans, and updates to existing todo tasks (assignee reassignment, deadline changes).
+
+**Capabilities:**
+- Parse a single natural language request into a task draft (title, priority, assignee)
+- Generate a comprehensive task breakdown (10–16 tasks) from a high-level project planning request
+- Update existing todo tasks: reassign team members, set or change deadlines
+- Confirm drafts to commit them to the database
+
+Example prompts that should now work in the Task Orchestrator:
+
+```
+Create a task "Integration Testing" with high priority.
+```
+```
+Assign the todo task "Integration Testing" to me.
+```
+```
+Set the deadline for "AI Suggestion Engine" to Friday.
+```
+```
+Assign the existing task "Integration Testing" to Priya Nair and set the deadline to 2026-06-01.
+```
+```
+Generate a comprehensive task breakdown for Phase 2 of the research project covering architecture, implementation, and testing workstreams.
+```
+```
+Update the "API Documentation" task deadline to next Monday and assign it to Alex Chen.
+```
+```
+Create a new task "Write final report" due by 12/15.
+```
+
+---
+
+### Team Coordinator
+
+The **Team Coordinator** processes meeting transcripts to extract structured summaries, action items, and ownership assignments. It logs cross-agent activity, creating a persistent history of team events — including task assignments, document indexing, and feedback submissions.
+
+**Capabilities:**
+- Summarize meeting transcripts into 2–3 sentence executive summaries
+- Extract action items with priority levels and assignee names
+- Convert extracted action items into confirmable task drafts
+- Maintain an audit trail of all team activities via an event broker
+
+Example prompts:
+
+```
+Summarize this standup: "Alice completed the data pipeline. Bob is blocked on API integration. Carol started the UI mockups. We need a design review by Wednesday."
+```
+```
+Extract action items from this sprint retro transcript: "We agreed to move the deployment to staging. Dave will draft a testing plan. Sarah will update the project timeline."
+```
+```
+Log this activity: Team sync completed — all blockers resolved and milestones are on track.
+```
+
+---
+
+### Feedback Agent
+
+The **Feedback Agent** ingests advisor or peer review feedback, categorizes it by severity (low, medium, high, urgent), generates a one-sentence structured summary, and drafts a professional response template that students can use to reply. It also maintains a persistent feedback dashboard of open/unresolved items.
+
+**Capabilities:**
+- Classify feedback by severity level
+- Generate a concise 1-sentence structured summary of the main critique
+- Draft a polite, professional response template with placeholders
+- Allow students to respond and advisors to resolve feedback threads
+
+Example prompts:
+
+```
+"Your analysis lacks statistical rigor. The sample size is too small to draw meaningful conclusions, and you haven't justified your choice of model. I recommend adding a power analysis and comparing at least two alternative models."
+```
+```
+"The project timeline is unrealistic given the scope of work. You need to either cut features or extend the deadline by at least two weeks."
+```
+```
+"The documentation is well-structured and the code is clean. However, the test coverage is below 60% and needs to be improved before the final submission."
+```
+
+---
+
+### Advisor Analyst
+
+The **Advisor Analyst** (also called the Progress Monitoring Agent) generates a professional three-paragraph Markdown progress report for project stakeholders. It collects real-time metrics — task completion percentage, open feedback count, weekly activity velocity, and active risks — and synthesizes them into an executive summary with risk assessment and recommendations.
+
+**Capabilities:**
+- Query aggregated project health metrics (completion %, feedback count, weekly velocity)
+- Auto-generate risks from high-severity feedback submissions
+- Produce an advisor-ready Markdown report with executive summary, velocity section, and risk assessment
+- Edit generated reports inline before export
+
+Example prompts:
+
+```
+Generate a weekly progress report for the advisor meeting tomorrow.
+```
+```
+Pull the latest dashboard metrics and highlight any blockers or at-risk milestones.
+```
+```
+Show me the current task completion rate and open feedback count.
+```
+```
+What are the active risks in this project and what's the recommended mitigation?
+```
+
+---
+## Notifications And Activity Feed
+
+CollabAgent includes an authenticated notification system plus a project-scoped activity feed.
+
+**Architecture:**
+- `notifications` stores per-user notification records with `type`, `category`, optional entity references, `action_url`, metadata, and `read_at`.
+- `activity_log` is the canonical project activity timeline. It supports event types, entity references, metadata, and project/user visibility checks.
+- `backend/services/notificationService.js` centralizes creation, read-state updates, project event recording, and pagination.
+- `GET /api/notifications/stream` uses Server-Sent Events for near-real-time delivery. The client passes the JWT as a query token because browser `EventSource` cannot set authorization headers.
+- `frontend/src/context/NotificationContext.jsx` owns notification state, unread count, read mutations, and the SSE lifecycle.
+- `NotificationBell` renders the unread badge and recent notification dropdown. `ActivityFeed` renders paginated project activity.
+
+**Setup:**
+1. Run `npm run db:migrate` from the repo root, or `cd backend && node db/migrate_notifications.js` if the base schema already exists.
+2. Start the backend and frontend with `npm run dev`.
+3. Sign in and perform collaboration actions such as assigning a student or assigning a task. The recipient sees a notification badge, and the project overview shows the activity entry.
+
+**Key design decisions:**
+- SSE was chosen to match the existing Express/event-broker style without introducing a WebSocket server.
+- Notifications are targeted to users; activity entries are scoped to projects and checked against project membership/ownership before being returned.
+- Event payloads use string `type`/`category` values and JSON metadata so new event families can be added without schema churn.
+- Read endpoints update only the authenticated user's rows.
+
+---
 ## 🛠️ Tech Stack
 
 | Layer      | Technology                          |

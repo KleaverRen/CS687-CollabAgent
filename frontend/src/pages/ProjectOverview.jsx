@@ -1,9 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import Layout from '../components/Layout';
 import api from '../utils/api';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
+import clsx from 'clsx';
+import ActivityFeed from '../components/ActivityFeed';
 
 const BG_COLORS = ['bg-violet-500', 'bg-blue-500', 'bg-emerald-500', 'bg-pink-500', 'bg-orange-500'];
 const QUARTERS = ['Fall', 'Winter', 'Spring', 'Summer'];
@@ -137,21 +139,127 @@ function EditProjectModal({ project, onClose, onSave }) {
   );
 }
 
-function AddStudentModal({ projectId, onClose, onAdd }) {
-  const [email, setEmail] = useState('');
+function MultiSelect({ options, selected, onToggle, loading, placeholder }) {
+  const [query, setQuery] = useState('');
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef(null);
+
+  const filtered = options.filter(opt =>
+    (opt.full_name.toLowerCase().includes(query.toLowerCase()) ||
+     opt.email.toLowerCase().includes(query.toLowerCase())) &&
+    !selected.find(s => s.id === opt.id)
+  );
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) setIsOpen(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <label className="block text-xs font-semibold text-[#434654] uppercase tracking-wider mb-1.5">Select Students</label>
+      <div
+        className={clsx(
+          "min-h-11 p-2 rounded-lg border border-[#c3c5d7] bg-white flex flex-wrap gap-2 items-center cursor-text transition-all",
+          isOpen && "border-[#003fb1] ring-2 ring-[#003fb1]/20"
+        )}
+        onClick={() => setIsOpen(true)}
+      >
+        {selected.map(item => (
+          <div key={item.id} className="flex items-center gap-1.5 px-2.5 py-1 bg-[#d6e0f1] text-[#003fb1] rounded-full text-xs font-bold">
+            <span>{item.full_name}</span>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onToggle(item); }}
+              className="hover:text-red-500 transition-colors"
+            >
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        ))}
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => { setQuery(e.target.value); setIsOpen(true); }}
+          placeholder={selected.length === 0 ? placeholder : ''}
+          className="flex-1 min-w-[120px] bg-transparent text-sm outline-none border-none p-0 focus:ring-0"
+        />
+      </div>
+
+      {isOpen && (
+        <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-[#c3c5d7] rounded-lg shadow-xl z-[60] max-h-60 overflow-y-auto">
+          {loading ? (
+            <div className="p-4 text-center text-sm text-slate-400">Loading users...</div>
+          ) : filtered.length > 0 ? (
+            filtered.map(opt => (
+              <button
+                key={opt.id}
+                type="button"
+                className="w-full text-left px-4 py-3 hover:bg-slate-50 border-b border-slate-100 last:border-0 transition-colors"
+                onClick={() => { onToggle(opt); setQuery(''); }}
+              >
+                <div className="text-sm font-bold text-[#191c1d]">{opt.full_name}</div>
+                <div className="text-xs text-[#737686]">{opt.email}</div>
+              </button>
+            ))
+          ) : (
+            <div className="p-4 text-center text-sm text-slate-400">
+              {query.trim() ? 'No matches found' : 'No more students available'}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AddStudentModal({ projectId, currentMembers = [], onClose, onAdd }) {
+  const [students, setStudents] = useState([]);
+  const [selected, setSelected] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const { data } = await api.get('/users?role=student');
+        const memberIds = new Set(currentMembers.map(m => m.id));
+        setStudents((data.users || []).filter(u => !memberIds.has(u.id)));
+      } catch {
+        toast.error('Failed to load students.');
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, [currentMembers]);
+
+  const handleToggle = (student) => {
+    if (selected.find(s => s.id === student.id)) {
+      setSelected(selected.filter(s => s.id !== student.id));
+    } else {
+      setSelected([...selected, student]);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!email.trim()) return;
+    if (selected.length === 0) return;
     setSaving(true);
     try {
-      const { data } = await api.post(`/projects/${projectId}/members`, { email });
-      onAdd(data.member);
-      toast.success('Student assigned.');
+      for (const s of selected) {
+        const { data } = await api.post(`/projects/${projectId}/members`, { email: s.email });
+        onAdd(data.member);
+      }
+      toast.success(`${selected.length} student(s) assigned.`);
       onClose();
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Failed to assign student.');
+      toast.error(err.response?.data?.error || 'Failed to assign students.');
     } finally {
       setSaving(false);
     }
@@ -159,26 +267,24 @@ function AddStudentModal({ projectId, onClose, onAdd }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl p-7 w-full max-w-md shadow-xl">
-        <h3 className="text-xl font-bold text-[#191c1d] mb-5">Assign Student</h3>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-xs font-semibold text-[#434654] uppercase tracking-wider mb-1.5">Student Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="student@institution.edu"
-              required
-              className="w-full h-11 px-4 rounded-lg border border-[#c3c5d7] text-sm focus:border-[#003fb1] focus:ring-2 focus:ring-[#003fb1]/20 outline-none transition-all"
-            />
-          </div>
-          <div className="flex gap-3 pt-2">
+      <div className="bg-white rounded-2xl p-7 w-full max-w-md shadow-xl flex flex-col max-h-[90vh]">
+        <h3 className="text-xl font-bold text-[#191c1d] mb-5">Assign Students</h3>
+
+        <form onSubmit={handleSubmit} className="space-y-4 flex-1 flex flex-col min-h-0">
+          <MultiSelect
+            options={students}
+            selected={selected}
+            onToggle={handleToggle}
+            loading={loading}
+            placeholder="Search by name or email..."
+          />
+
+          <div className="flex gap-3 pt-4">
             <button type="button" onClick={onClose} className="flex-1 h-11 text-sm font-semibold border border-[#c3c5d7] rounded-xl hover:bg-[#f3f4f5] transition-colors">
               Cancel
             </button>
-            <button type="submit" disabled={saving} className="flex-1 h-11 bg-[#003fb1] text-white text-sm font-bold rounded-xl hover:bg-[#1353d8] disabled:opacity-60 transition-colors">
-              {saving ? 'Assigning...' : 'Assign Student'}
+            <button type="submit" disabled={saving || selected.length === 0} className="flex-1 h-11 bg-[#003fb1] text-white text-sm font-bold rounded-xl hover:bg-[#1353d8] disabled:opacity-60 transition-colors">
+              {saving ? 'Assigning...' : `Assign ${selected.length} Student${selected.length !== 1 ? 's' : ''}`}
             </button>
           </div>
         </form>
@@ -252,11 +358,6 @@ export default function ProjectOverview() {
     .filter(t => t.deadline)
     .sort((a, b) => new Date(a.deadline) - new Date(b.deadline))
     .slice(0, 4);
-
-  // Recent Activity: Last 5 tasks by creation/update
-  const recentActivity = [...tasks]
-    .sort((a, b) => new Date(b.created_at || b.updated_at) - new Date(a.created_at || a.updated_at))
-    .slice(0, 5);
 
   const handleArchiveToggle = async () => {
     setUpdatingStatus(true);
@@ -426,26 +527,7 @@ export default function ProjectOverview() {
               </div>
             </div>
 
-            {/* Right Column: Recent Activity */}
-            <div className="bg-white rounded-2xl p-6 border border-[#e1e3e4] shadow-sm h-full">
-              <h3 className="text-sm font-bold text-[#434654] uppercase tracking-wider mb-6">Recent Activity</h3>
-              <div className="relative border-l-2 border-[#e1e3e4] ml-3 space-y-6">
-                {recentActivity.length > 0 ? recentActivity.map(task => (
-                  <div key={task.id} className="relative pl-6">
-                    <div className="absolute -left-[9px] top-1 w-4 h-4 bg-white border-2 border-[#003fb1] rounded-full"></div>
-                    <div className="text-xs font-semibold text-[#003fb1] mb-1">
-                      {new Date(task.created_at || task.updated_at).toLocaleDateString()}
-                    </div>
-                    <div className="text-sm font-semibold text-[#191c1d] leading-tight mb-1">{task.title}</div>
-                    <div className="text-xs text-[#737686]">
-                      Status changed to <span className="font-bold">{task.status.replace('_', ' ')}</span>
-                    </div>
-                  </div>
-                )) : (
-                  <div className="pl-6 text-sm text-[#737686] italic">No recent activity.</div>
-                )}
-              </div>
-            </div>
+            <ActivityFeed projectId={id} title="Recent Activity" limit={10} />
 
           </div>
         </div>
@@ -460,6 +542,7 @@ export default function ProjectOverview() {
         {showAddStudent && (
           <AddStudentModal
             projectId={id}
+            currentMembers={project.members}
             onClose={() => setShowAddStudent(false)}
             onAdd={(member) => setProject((prev) => ({
               ...prev,

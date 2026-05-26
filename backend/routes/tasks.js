@@ -3,6 +3,7 @@ const router = express.Router();
 const { body, query, validationResult } = require('express-validator');
 const pool = require('../config/database');
 const { authenticate } = require('../middleware/auth');
+const { recordProjectEvent } = require('../services/notificationService');
 
 router.use(authenticate);
 
@@ -152,7 +153,30 @@ router.post('/', [
       WHERE t.id = $1
     `, [task.id]);
 
-    res.status(201).json({ task: full.rows[0] });
+    const fullTask = full.rows[0];
+    await recordProjectEvent({
+      projectId: project_id,
+      actorId: req.user.id,
+      eventType: 'task.created',
+      entityType: 'task',
+      entityId: task.id,
+      metadata: {
+        title: task.title,
+        status: task.status,
+        priority: task.priority,
+        assignedTo: task.assigned_to,
+      },
+      notification: task.assigned_to ? {
+        recipientIds: [task.assigned_to],
+        type: 'task.assigned',
+        category: 'mentions',
+        title: `Task assigned: ${task.title}`,
+        body: `${req.user.full_name} assigned you a ${task.priority} priority task.`,
+        actionUrl: `/projects/${project_id}/tasks`,
+      } : null,
+    });
+
+    res.status(201).json({ task: fullTask });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Internal server error' });
@@ -203,6 +227,11 @@ router.patch('/:id', [
       return res.status(403).json({ error: ARCHIVED_PROJECT_ERROR });
     }
 
+    const previous = await pool.query(
+      'SELECT title, status, priority, assigned_to FROM tasks WHERE id = $1',
+      [req.params.id]
+    );
+
     const result = await pool.query(`
       UPDATE tasks SET
         title           = COALESCE($1,  title),
@@ -225,6 +254,36 @@ router.patch('/:id', [
       SELECT t.*, u.full_name AS assignee_name, u.avatar_url AS assignee_avatar
       FROM tasks t LEFT JOIN users u ON t.assigned_to = u.id WHERE t.id = $1
     `, [req.params.id]);
+    const updatedTask = full.rows[0];
+    const previousTask = previous.rows[0] || {};
+    const changes = {};
+    ['title', 'status', 'priority', 'assigned_to'].forEach((field) => {
+      if (previousTask[field] !== updatedTask[field]) {
+        changes[field] = { from: previousTask[field], to: updatedTask[field] };
+      }
+    });
+
+    await recordProjectEvent({
+      projectId,
+      actorId: req.user.id,
+      eventType: 'task.updated',
+      entityType: 'task',
+      entityId: req.params.id,
+      metadata: {
+        title: updatedTask.title,
+        changes,
+      },
+      notification: updatedTask.assigned_to ? {
+        recipientIds: [updatedTask.assigned_to],
+        type: previousTask.assigned_to !== updatedTask.assigned_to ? 'task.assigned' : 'task.updated',
+        category: previousTask.assigned_to !== updatedTask.assigned_to ? 'mentions' : 'updates',
+        title: previousTask.assigned_to !== updatedTask.assigned_to
+          ? `Task assigned: ${updatedTask.title}`
+          : `Task updated: ${updatedTask.title}`,
+        body: updatedTask.status ? `Current status: ${updatedTask.status.replace('_', ' ')}.` : '',
+        actionUrl: `/projects/${projectId}/tasks`,
+      } : null,
+    });
     res.json({ task: full.rows[0] });
   } catch (err) {
     console.error(err);
@@ -249,6 +308,14 @@ router.delete('/:id', async (req, res) => {
       [req.params.id, req.user.id]
     );
     if (!result.rows.length) return res.status(404).json({ error: 'Task not found or unauthorized' });
+    await recordProjectEvent({
+      projectId,
+      actorId: req.user.id,
+      eventType: 'task.deleted',
+      entityType: 'task',
+      entityId: req.params.id,
+      metadata: { taskId: req.params.id },
+    });
     res.json({ message: 'Task deleted' });
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
@@ -310,6 +377,14 @@ router.post('/:id/dependencies', [
       INSERT INTO task_dependencies (parent_task_id, child_task_id, dep_type)
       VALUES ($1, $2, $3) ON CONFLICT DO NOTHING
     `, [parent_task_id, child_task_id, dep_type]);
+    await recordProjectEvent({
+      projectId,
+      actorId: req.user.id,
+      eventType: 'task.dependency_created',
+      entityType: 'task',
+      entityId: child_task_id,
+      metadata: { parentTaskId: parent_task_id, childTaskId: child_task_id, depType: dep_type },
+    });
     res.status(201).json({ message: 'Dependency created' });
   } catch (err) {
     console.error(err);
@@ -333,6 +408,14 @@ router.delete('/:id/dependencies/:childId', async (req, res) => {
       'DELETE FROM task_dependencies WHERE parent_task_id=$1 AND child_task_id=$2',
       [req.params.id, req.params.childId]
     );
+    await recordProjectEvent({
+      projectId,
+      actorId: req.user.id,
+      eventType: 'task.dependency_removed',
+      entityType: 'task',
+      entityId: req.params.childId,
+      metadata: { parentTaskId: req.params.id, childTaskId: req.params.childId },
+    });
     res.json({ message: 'Dependency removed' });
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });

@@ -9,7 +9,7 @@ const generationService = require('../../services/generationService');
 // POST /api/agents/feedback/submit - Submit feedback and generate suggested responses
 router.post('/submit', authenticate, async (req, res) => {
   try {
-    const { projectId, body, category, milestoneRef, severity } = req.body;
+    const { projectId, body, category, milestoneRef, severity, provider = null } = req.body;
     
     if (!projectId || !body) {
       return res.status(400).json({ error: 'projectId and body are required' });
@@ -34,7 +34,7 @@ Respond strictly in valid JSON containing:
 
 Format strictly as JSON.`;
 
-    const parsed = await generationService.generateJson(systemPrompt, `Feedback:\n${body}`, fallbackResult);
+    const parsed = await generationService.generateJson(systemPrompt, `Feedback:\n${body}`, fallbackResult, provider);
     const structuredSummary = parsed.structured_summary || fallbackResult.structured_summary;
     const suggestedResponseTemplate = parsed.suggested_response_template || fallbackResult.suggested_response_template;
 

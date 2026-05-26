@@ -132,6 +132,34 @@ const createTables = async () => {
       );
     `);
 
+    await client.query(`
+      ALTER TABLE activity_log
+      ADD COLUMN IF NOT EXISTS entity_type VARCHAR(64),
+      ADD COLUMN IF NOT EXISTS entity_id UUID,
+      ADD COLUMN IF NOT EXISTS visibility VARCHAR(32) DEFAULT 'project',
+      ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS notifications (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        actor_id UUID REFERENCES users(id) ON DELETE SET NULL,
+        project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
+        activity_id INTEGER REFERENCES activity_log(id) ON DELETE SET NULL,
+        type VARCHAR(64) NOT NULL,
+        category VARCHAR(64) NOT NULL DEFAULT 'updates',
+        title VARCHAR(255) NOT NULL,
+        body TEXT,
+        entity_type VARCHAR(64),
+        entity_id UUID,
+        action_url TEXT,
+        metadata JSONB DEFAULT '{}',
+        read_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+
     // Structured feedback from advisors
     await client.query(`
       CREATE TABLE IF NOT EXISTS feedback (
@@ -203,6 +231,10 @@ const createTables = async () => {
       CREATE INDEX IF NOT EXISTS idx_projects_owner ON projects(owner_id);
       CREATE INDEX IF NOT EXISTS idx_project_members_user ON project_members(user_id);
       CREATE INDEX IF NOT EXISTS idx_documents_project ON documents(project_id);
+      CREATE INDEX IF NOT EXISTS idx_activity_project_created ON activity_log(project_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_activity_actor_created ON activity_log(actor_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_notifications_user_created ON notifications(user_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_notifications_user_unread ON notifications(user_id, read_at) WHERE read_at IS NULL;
     `);
 
     await client.query('COMMIT');
