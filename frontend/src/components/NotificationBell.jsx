@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Bell, CheckCheck, Loader2 } from 'lucide-react';
 import clsx from 'clsx';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useNotifications } from '../context/NotificationContext';
 
 const typeLabels = {
@@ -23,6 +23,7 @@ function formatTime(value) {
 }
 
 export default function NotificationBell({ compact = false, align = 'right', vertical = 'down' }) {
+  const navigate = useNavigate();
   const { loading, markAllRead, markRead, notifications, unreadCount } = useNotifications();
   const [open, setOpen] = useState(false);
   const containerRef = useRef(null);
@@ -89,13 +90,12 @@ export default function NotificationBell({ compact = false, align = 'right', ver
             ) : (
               notifications.map((notification) => {
                 const unread = !notification.read_at;
-                const content = (
+                const safeContent = (
                   <div
                     className={clsx(
                       'block border-b border-[#eef1f5] px-4 py-3 text-left last:border-0 hover:bg-[#f6f8fb]',
                       unread && 'bg-[#f0f4ff]'
                     )}
-                    onClick={() => unread && markRead(notification.id)}
                   >
                     <div className="mb-1 flex items-center justify-between gap-3">
                       <span className="text-[10px] font-bold uppercase tracking-wider text-[#003fb1]">
@@ -113,15 +113,39 @@ export default function NotificationBell({ compact = false, align = 'right', ver
                   </div>
                 );
 
+                const handleNotifyClick = async (event) => {
+                  event.preventDefault();
+                  if (unread) {
+                    try {
+                      await markRead(notification.id);
+                    } catch (err) {
+                      console.error('[NotificationBell] markRead failed', err);
+                    }
+                  }
+                  setOpen(false);
+                  if (notification.action_url) {
+                    navigate(notification.action_url);
+                  }
+                };
+
                 if (notification.action_url) {
                   return (
-                    <Link key={notification.id} to={notification.action_url} onClick={() => setOpen(false)}>
-                      {content}
+                    <Link key={notification.id} to={notification.action_url} onClick={handleNotifyClick}>
+                      {safeContent}
                     </Link>
                   );
                 }
 
-                return <button key={notification.id} type="button" className="w-full">{content}</button>;
+                return (
+                  <button
+                    key={notification.id}
+                    type="button"
+                    className="w-full"
+                    onClick={handleNotifyClick}
+                  >
+                    {safeContent}
+                  </button>
+                );
               })
             )}
           </div>

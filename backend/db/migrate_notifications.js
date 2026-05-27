@@ -1,17 +1,10 @@
-const pool = require('../config/database');
+const pool = require("../config/database");
 
+// Notification-specific migration. Activity log schema updates are consolidated into backend/db/migrate.js
 const createNotificationTables = async () => {
   const client = await pool.connect();
   try {
-    await client.query('BEGIN');
-
-    await client.query(`
-      ALTER TABLE activity_log
-      ADD COLUMN IF NOT EXISTS entity_type VARCHAR(64),
-      ADD COLUMN IF NOT EXISTS entity_id UUID,
-      ADD COLUMN IF NOT EXISTS visibility VARCHAR(32) DEFAULT 'project',
-      ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
-    `);
+    await client.query("BEGIN");
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS notifications (
@@ -40,11 +33,11 @@ const createNotificationTables = async () => {
       CREATE INDEX IF NOT EXISTS idx_notifications_user_unread ON notifications(user_id, read_at) WHERE read_at IS NULL;
     `);
 
-    await client.query('COMMIT');
-    console.log('✅ Notification tables migration completed successfully');
+    await client.query("COMMIT");
+    console.log("✅ Notification tables migration completed successfully");
   } catch (err) {
-    await client.query('ROLLBACK');
-    console.error('❌ Notification migration failed:', err);
+    await client.query("ROLLBACK");
+    console.error("❌ Notification migration failed:", err);
     throw err;
   } finally {
     client.release();

@@ -142,13 +142,16 @@ function LoadingText({ loading, idle }) {
   );
 }
 
-function StreamingMessage({ text }) {
-  const [visibleLength, setVisibleLength] = useState(text.length);
+function StreamingMessage({ text, stream = false }) {
+  const [visibleLength, setVisibleLength] = useState(stream ? 0 : text.length);
 
   useEffect(() => {
-    setVisibleLength(0);
-    if (!text) return undefined;
+    if (!stream || !text) {
+      setVisibleLength(text.length);
+      return undefined;
+    }
 
+    setVisibleLength(0);
     const timer = window.setInterval(() => {
       setVisibleLength((length) => {
         if (length >= text.length) {
@@ -160,7 +163,7 @@ function StreamingMessage({ text }) {
     }, 16);
 
     return () => window.clearInterval(timer);
-  }, [text]);
+  }, [stream, text]);
 
   return <p>{text.slice(0, visibleLength)}</p>;
 }
@@ -303,7 +306,7 @@ export default function AIWorkbench() {
     setProgressReport(nextState?.progressReport || '');
     setProgressPrompt(nextState?.progressPrompt || '');
     setIsEditingReport(false);
-    setChatMessages(nextState?.chatMessages?.length ? nextState.chatMessages : getSessionGreeting());
+    setChatMessages(nextState?.chatMessages?.length ? nextState.chatMessages.map((msg) => ({ ...msg, stream: false })) : getSessionGreeting());
     restoredProjectRef.current = projectId || 'global';
 
     if (projectId && user?.id) {
@@ -352,26 +355,55 @@ export default function AIWorkbench() {
   }, [activeTab, chatMessages, docContent, docTitle, feedbackBody, feedbackResult, feedbackSeverity, ingestionEvents, meetingResult, progressPrompt, progressReport, projectId, ragAnswer, ragQuery, searchTerm, selectedProvider, taskDraft, taskDrafts, taskRequest, taskUpdateDraft, transcript]);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (!token || !projectId) return undefined;
+    if (!projectId) return undefined;
 
-    const stream = new EventSource(`/api/agents/rag/events/stream?token=${encodeURIComponent(token)}`);
+    let source = null;
+    let retryCount = 0;
+    let retryTimeout = null;
+    const maxRetry = 5;
 
-    stream.onmessage = (event) => {
-      try {
-        const payload = JSON.parse(event.data);
-        if (payload?.payload?.projectId && payload.payload.projectId !== projectId) return;
-        setIngestionEvents((events) => [payload, ...events].slice(0, 20));
-      } catch (err) {
-        console.error('[AIWorkbench] Failed to parse RAG event:', err);
+    const connectStream = () => {
+      if (source) {
+        source.close();
+      }
+      source = new EventSource('/api/agents/rag/events/stream');
+
+      source.onopen = () => {
+        retryCount = 0;
+      };
+
+      source.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+          if (payload?.payload?.projectId && payload.payload.projectId !== projectId) return;
+          setIngestionEvents((events) => [payload, ...events].slice(0, 20));
+          retryCount = 0;
+        } catch (err) {
+          console.error('[AIWorkbench] Failed to parse RAG event:', err);
+        }
+      };
+
+      source.onerror = () => {
+        source.close();
+        if (retryCount >= maxRetry) return;
+        const delay = Math.min(30000, 1000 * 2 ** retryCount);
+        retryTimeout = window.setTimeout(() => {
+          retryCount += 1;
+          connectStream();
+        }, delay);
+      };
+    };
+
+    connectStream();
+
+    return () => {
+      if (source) {
+        source.close();
+      }
+      if (retryTimeout) {
+        window.clearTimeout(retryTimeout);
       }
     };
-
-    stream.onerror = () => {
-      stream.close();
-    };
-
-    return () => stream.close();
   }, [projectId]);
 
   const appendUserMessage = (text) => {
@@ -395,6 +427,7 @@ export default function AIWorkbench() {
         agentId,
         timestamp: new Date().toISOString(),
         text,
+        stream: true,
       },
     ]);
   };
@@ -522,17 +555,37 @@ export default function AIWorkbench() {
   });
 
   const confirmTaskDrafts = (drafts) => runAction('confirm-task', async () => {
-    const created = [];
-    for (const draft of drafts) {
-      const { data } = await api.post('/agents/task/confirm', {
+    const results = await Promise.allSettled(
+      drafts.map((draft) => api.post('/agents/task/confirm', {
         draft,
         projectId,
         user_confirmed: true,
-      });
-      created.push(data.task);
+      })),
+    );
+
+    const created = [];
+    const failedDrafts = [];
+    const errors = [];
+
+    results.forEach((result, index) => {
+      if (result.status === 'fulfilled') {
+        created.push(result.value.data.task);
+      } else {
+        failedDrafts.push(drafts[index]);
+        errors.push(result.reason?.response?.data?.error || result.reason?.message || 'Unknown error');
+      }
+    });
+
+    setTaskDrafts(failedDrafts);
+
+    if (created.length > 0) {
+      toast.success(`${created.length} task${created.length === 1 ? '' : 's'} created.`);
     }
-    setTaskDrafts([]);
-    toast.success(`${created.length} tasks created.`);
+    if (failedDrafts.length > 0) {
+      toast.error(`${failedDrafts.length} draft${failedDrafts.length === 1 ? '' : 's'} failed: ${errors.join('; ')}`);
+    }
+
+    return created.length > 0;
   });
 
   const confirmTaskUpdate = (updateDraft) => runAction('confirm-task', async () => {
@@ -978,7 +1031,7 @@ export default function AIWorkbench() {
                         <span className="text-[#303846]">{timeLabel}</span>
                       </div>
                       <div className={clsx('border-l-4', 'border-[#1f5de8]', 'bg-white', 'p-5', 'text-sm', 'leading-6', 'shadow-sm', 'ring-1', 'ring-[#1f5de8]', '2xl:text-base', '2xl:leading-7')}>
-                        <StreamingMessage text={message.text} />
+                        <StreamingMessage text={message.text} stream={!!message.stream} />
                         <div className={clsx('mt-4', 'rounded', 'bg-[#f1f5ff]', 'p-4', 'text-sm')}>
                           <p className={clsx('font-bold', 'uppercase', 'text-[#003fb1]')}>Proposed Action</p>
                           <p className={clsx('mt-1', 'italic')}>"{activeTab === 'rag' ? 'Search indexed documents for supporting evidence.' : activeTab === 'task' ? 'Convert this request into a structured project task.' : activeTab === 'meeting' ? 'Summarize coordination notes and extract action items.' : activeTab === 'feedback' ? 'Analyze advisor feedback and draft a response.' : 'Generate an advisor-ready weekly progress report.'}"</p>

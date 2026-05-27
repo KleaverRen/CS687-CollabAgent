@@ -1,17 +1,15 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-const { body, query, param, validationResult } = require('express-validator');
-const { authenticate } = require('../middleware/auth');
-const eventBroker = require('../services/eventBroker');
+const { query, param, validationResult } = require("express-validator");
+const { authenticate, authenticateSSE } = require("../middleware/auth");
+const eventBroker = require("../services/eventBroker");
 const {
   getUnreadCount,
   listActivity,
   listNotifications,
   markAllNotificationsRead,
   markNotificationRead,
-} = require('../services/notificationService');
-
-router.use(authenticate);
+} = require("../services/notificationService");
 
 function handleValidation(req, res) {
   const errors = validationResult(req);
@@ -23,11 +21,12 @@ function handleValidation(req, res) {
 }
 
 router.get(
-  '/',
+  "/",
+  authenticate,
   [
-    query('limit').optional().isInt({ min: 1, max: 100 }),
-    query('before').optional().isISO8601(),
-    query('unread').optional().isBoolean(),
+    query("limit").optional().isInt({ min: 1, max: 100 }),
+    query("before").optional().isISO8601(),
+    query("unread").optional().isBoolean(),
   ],
   async (req, res) => {
     if (!handleValidation(req, res)) return;
@@ -36,63 +35,67 @@ router.get(
       const notifications = await listNotifications(req.user.id, {
         limit: req.query.limit,
         before: req.query.before,
-        unreadOnly: req.query.unread === 'true',
+        unreadOnly: req.query.unread === "true",
       });
       const unreadCount = await getUnreadCount(req.user.id);
       res.json({ notifications, unreadCount });
     } catch (err) {
-      console.error('[Notifications] List error:', err);
-      res.status(500).json({ error: 'Failed to load notifications' });
+      console.error("[Notifications] List error:", err);
+      res.status(500).json({ error: "Failed to load notifications" });
     }
-  }
+  },
 );
 
-router.get('/unread-count', async (req, res) => {
+router.get("/unread-count", authenticate, async (req, res) => {
   try {
     res.json({ unreadCount: await getUnreadCount(req.user.id) });
   } catch (err) {
-    console.error('[Notifications] Count error:', err);
-    res.status(500).json({ error: 'Failed to load unread count' });
+    console.error("[Notifications] Count error:", err);
+    res.status(500).json({ error: "Failed to load unread count" });
   }
 });
 
 router.patch(
-  '/:id/read',
-  [param('id').isUUID()],
+  "/:id/read",
+  authenticate,
+  [param("id").isUUID()],
   async (req, res) => {
     if (!handleValidation(req, res)) return;
 
     try {
-      const notification = await markNotificationRead(req.user.id, req.params.id);
-      if (!notification) return res.status(404).json({ error: 'Notification not found' });
-      res.json({ notification, unreadCount: await getUnreadCount(req.user.id) });
+      const notification = await markNotificationRead(
+        req.user.id,
+        req.params.id,
+      );
+      if (!notification)
+        return res.status(404).json({ error: "Notification not found" });
+      res.json({
+        notification,
+        unreadCount: await getUnreadCount(req.user.id),
+      });
     } catch (err) {
-      console.error('[Notifications] Mark read error:', err);
-      res.status(500).json({ error: 'Failed to mark notification as read' });
+      console.error("[Notifications] Mark read error:", err);
+      res.status(500).json({ error: "Failed to mark notification as read" });
     }
-  }
+  },
 );
 
-router.patch(
-  '/read-all',
-  [body('confirm').optional().isBoolean()],
-  async (req, res) => {
-    if (!handleValidation(req, res)) return;
+router.patch("/read-all", authenticate, async (req, res) => {
+  if (!handleValidation(req, res)) return;
 
-    try {
-      const updated = await markAllNotificationsRead(req.user.id);
-      res.json({ updated, unreadCount: 0 });
-    } catch (err) {
-      console.error('[Notifications] Mark all read error:', err);
-      res.status(500).json({ error: 'Failed to mark notifications as read' });
-    }
+  try {
+    const updated = await markAllNotificationsRead(req.user.id);
+    res.json({ updated, unreadCount: 0 });
+  } catch (err) {
+    console.error("[Notifications] Mark all read error:", err);
+    res.status(500).json({ error: "Failed to mark notifications as read" });
   }
-);
+});
 
-router.get('/stream', async (req, res) => {
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
+router.get("/stream", authenticateSSE, async (req, res) => {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
   res.flushHeaders?.();
 
   const write = (eventName, payload) => {
@@ -101,19 +104,50 @@ router.get('/stream', async (req, res) => {
   };
 
   const topic = `notifications.user.${req.user.id}`;
-  const listener = async (event) => {
-    write('notification', {
-      ...event.payload,
-      unreadCount: await getUnreadCount(req.user.id),
-    });
+  let cachedUnreadCount = null;
+
+  const getCachedUnreadCount = async () => {
+    if (typeof cachedUnreadCount === "number") {
+      return cachedUnreadCount;
+    }
+    cachedUnreadCount = await getUnreadCount(req.user.id);
+    return cachedUnreadCount;
   };
 
-  write('ready', { unreadCount: await getUnreadCount(req.user.id) });
+  const listener = async (event) => {
+    try {
+      const unreadCount =
+        typeof event.payload.unreadCount === "number"
+          ? event.payload.unreadCount
+          : await getCachedUnreadCount();
+
+      if (typeof event.payload.unreadCount === "number") {
+        cachedUnreadCount = event.payload.unreadCount;
+      }
+
+      write("notification", {
+        ...event.payload,
+        unreadCount,
+      });
+    } catch (err) {
+      console.error("[Notifications] SSE listener error:", err);
+      write("notification", {
+        ...event.payload,
+        unreadCount:
+          typeof cachedUnreadCount === "number" ? cachedUnreadCount : null,
+      });
+    }
+  };
+
+  write("ready", { unreadCount: await getCachedUnreadCount() });
   eventBroker.on(topic, listener);
 
-  const heartbeat = setInterval(() => write('heartbeat', { at: new Date().toISOString() }), 30000);
+  const heartbeat = setInterval(
+    () => write("heartbeat", { at: new Date().toISOString() }),
+    30000,
+  );
 
-  req.on('close', () => {
+  req.on("close", () => {
     clearInterval(heartbeat);
     eventBroker.removeListener(topic, listener);
     res.end();
@@ -121,11 +155,12 @@ router.get('/stream', async (req, res) => {
 });
 
 router.get(
-  '/activity',
+  "/activity",
+  authenticate,
   [
-    query('project_id').optional().isUUID(),
-    query('limit').optional().isInt({ min: 1, max: 100 }),
-    query('before').optional().isISO8601(),
+    query("project_id").optional().isUUID(),
+    query("limit").optional().isInt({ min: 1, max: 100 }),
+    query("before").optional().isISO8601(),
   ],
   async (req, res) => {
     if (!handleValidation(req, res)) return;
@@ -138,10 +173,10 @@ router.get(
       });
       res.json({ activities });
     } catch (err) {
-      console.error('[Notifications] Activity list error:', err);
-      res.status(500).json({ error: 'Failed to load activity feed' });
+      console.error("[Notifications] Activity list error:", err);
+      res.status(500).json({ error: "Failed to load activity feed" });
     }
-  }
+  },
 );
 
 module.exports = router;

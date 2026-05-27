@@ -21,7 +21,8 @@ function describe(activity) {
   if (metadata.name) return metadata.name;
   if (metadata.memberName) return metadata.memberName;
   if (activity.project_name) return activity.project_name;
-  return activity.event_type.replaceAll('.', ' ');
+  const eventType = String(activity.event_type || 'unknown');
+  return eventType.replaceAll('.', ' ');
 }
 
 function formatDate(value) {

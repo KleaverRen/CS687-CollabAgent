@@ -1,5 +1,5 @@
-const pool = require('../config/database');
-const eventBroker = require('./eventBroker');
+const pool = require("../config/database");
+const eventBroker = require("./eventBroker");
 
 const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 100;
@@ -11,61 +11,79 @@ function clampLimit(limit, fallback = DEFAULT_LIMIT) {
 }
 
 function normalizeMetadata(metadata) {
-  return metadata && typeof metadata === 'object' && !Array.isArray(metadata) ? metadata : {};
+  return metadata && typeof metadata === "object" && !Array.isArray(metadata)
+    ? metadata
+    : {};
 }
 
 async function getProjectMemberIds(projectId, client = pool) {
   const result = await client.query(
     `SELECT user_id FROM project_members WHERE project_id = $1`,
-    [projectId]
+    [projectId],
   );
   return result.rows.map((row) => row.user_id);
 }
 
-function publishNotification(notification) {
+async function publishNotification(notification) {
+  const unreadCount = await getUnreadCount(notification.user_id);
   eventBroker.publish(`notifications.user.${notification.user_id}`, {
     notification,
+    unreadCount,
   });
 }
 
-async function createActivity({
-  projectId,
-  actorId = null,
-  eventType,
-  entityType = null,
-  entityId = null,
-  visibility = 'project',
-  metadata = {},
-}, client = pool) {
+async function createActivity(
+  {
+    projectId,
+    actorId = null,
+    eventType,
+    entityType = null,
+    entityId = null,
+    visibility = "project",
+    metadata = {},
+  },
+  client = pool,
+) {
   const result = await client.query(
     `INSERT INTO activity_log
       (project_id, actor_id, event_type, entity_type, entity_id, visibility, metadata)
      VALUES ($1, $2, $3, $4, $5, $6, $7)
      RETURNING *`,
-    [projectId, actorId, eventType, entityType, entityId, visibility, normalizeMetadata(metadata)]
+    [
+      projectId,
+      actorId,
+      eventType,
+      entityType,
+      entityId,
+      visibility,
+      normalizeMetadata(metadata),
+    ],
   );
   const activity = result.rows[0];
-  eventBroker.publish('activity.created', { activity });
+  eventBroker.publish("activity.created", { activity });
   if (projectId) {
     eventBroker.publish(`activity.project.${projectId}`, { activity });
   }
   return activity;
 }
 
-async function createNotification({
-  userId,
-  actorId = null,
-  projectId = null,
-  activityId = null,
-  type,
-  category = 'updates',
-  title,
-  body = '',
-  entityType = null,
-  entityId = null,
-  actionUrl = null,
-  metadata = {},
-}, client = pool) {
+async function createNotification(
+  {
+    userId,
+    actorId = null,
+    projectId = null,
+    activityId = null,
+    type,
+    category = "updates",
+    title,
+    body = "",
+    entityType = null,
+    entityId = null,
+    actionUrl = null,
+    metadata = {},
+  },
+  client = pool,
+) {
   const result = await client.query(
     `INSERT INTO notifications
       (user_id, actor_id, project_id, activity_id, type, category, title, body,
@@ -85,10 +103,10 @@ async function createNotification({
       entityId,
       actionUrl,
       normalizeMetadata(metadata),
-    ]
+    ],
   );
   const notification = result.rows[0];
-  publishNotification(notification);
+  await publishNotification(notification);
   return notification;
 }
 
@@ -97,43 +115,61 @@ async function notifyUsers(userIds, payload, client = pool) {
   const notifications = [];
 
   for (const userId of uniqueUserIds) {
-    if (payload.actorId && payload.actorId === userId && payload.skipActor !== false) {
+    if (
+      payload.actorId &&
+      payload.actorId === userId &&
+      payload.skipActor !== false
+    ) {
       continue;
     }
-    notifications.push(await createNotification({ ...payload, userId }, client));
+    notifications.push(
+      await createNotification({ ...payload, userId }, client),
+    );
   }
 
   return notifications;
 }
 
-async function recordProjectEvent({
-  projectId,
-  actorId,
-  eventType,
-  entityType = null,
-  entityId = null,
-  metadata = {},
-  notification = null,
-}, client = pool) {
-  const activity = await createActivity({
+async function recordProjectEvent(
+  {
     projectId,
     actorId,
     eventType,
-    entityType,
-    entityId,
-    metadata,
-  }, client);
-
-  if (notification) {
-    const recipientIds = notification.recipientIds || await getProjectMemberIds(projectId, client);
-    await notifyUsers(recipientIds, {
-      actorId,
+    entityType = null,
+    entityId = null,
+    metadata = {},
+    notification = null,
+  },
+  client = pool,
+) {
+  const activity = await createActivity(
+    {
       projectId,
-      activityId: activity.id,
+      actorId,
+      eventType,
       entityType,
       entityId,
-      ...notification,
-    }, client);
+      metadata,
+    },
+    client,
+  );
+
+  if (notification) {
+    const recipientIds =
+      notification.recipientIds ||
+      (await getProjectMemberIds(projectId, client));
+    await notifyUsers(
+      recipientIds,
+      {
+        actorId,
+        projectId,
+        activityId: activity.id,
+        entityType,
+        entityId,
+        ...notification,
+      },
+      client,
+    );
   }
 
   return activity;
@@ -141,7 +177,7 @@ async function recordProjectEvent({
 
 async function listNotifications(userId, { limit, before, unreadOnly } = {}) {
   const params = [userId];
-  let where = 'n.user_id = $1';
+  let where = "n.user_id = $1";
 
   if (before) {
     params.push(before);
@@ -149,7 +185,7 @@ async function listNotifications(userId, { limit, before, unreadOnly } = {}) {
   }
 
   if (unreadOnly) {
-    where += ' AND n.read_at IS NULL';
+    where += " AND n.read_at IS NULL";
   }
 
   params.push(clampLimit(limit));
@@ -161,7 +197,7 @@ async function listNotifications(userId, { limit, before, unreadOnly } = {}) {
      WHERE ${where}
      ORDER BY n.created_at DESC
      LIMIT $${params.length}`,
-    params
+    params,
   );
   return result.rows;
 }
@@ -169,7 +205,7 @@ async function listNotifications(userId, { limit, before, unreadOnly } = {}) {
 async function getUnreadCount(userId) {
   const result = await pool.query(
     `SELECT COUNT(*)::int AS count FROM notifications WHERE user_id = $1 AND read_at IS NULL`,
-    [userId]
+    [userId],
   );
   return result.rows[0]?.count || 0;
 }
@@ -180,7 +216,7 @@ async function markNotificationRead(userId, notificationId) {
      SET read_at = COALESCE(read_at, NOW())
      WHERE id = $1 AND user_id = $2
      RETURNING *`,
-    [notificationId, userId]
+    [notificationId, userId],
   );
   return result.rows[0] || null;
 }
@@ -191,7 +227,7 @@ async function markAllNotificationsRead(userId) {
      SET read_at = COALESCE(read_at, NOW())
      WHERE user_id = $1 AND read_at IS NULL
      RETURNING id`,
-    [userId]
+    [userId],
   );
   return result.rowCount;
 }
@@ -223,7 +259,7 @@ async function listActivity(userId, { projectId, limit, before } = {}) {
      WHERE ${where}
      ORDER BY a.created_at DESC
      LIMIT $${params.length}`,
-    params
+    params,
   );
   return result.rows;
 }
