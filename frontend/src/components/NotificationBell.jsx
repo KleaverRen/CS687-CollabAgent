@@ -1,41 +1,49 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Bell, CheckCheck, Loader2 } from 'lucide-react';
-import clsx from 'clsx';
-import { Link, useNavigate } from 'react-router-dom';
-import { useNotifications } from '../context/NotificationContext';
+import React, { useEffect, useRef, useState } from "react";
+import { Bell, CheckCheck, Loader2 } from "lucide-react";
+import clsx from "clsx";
+import { Link, useNavigate } from "react-router-dom";
+import { useNotifications } from "../context/NotificationContext";
 
 const typeLabels = {
-  'project.assignment': 'Assignment',
-  'project.updated': 'Project',
-  'task.assigned': 'Task',
-  'task.updated': 'Task',
+  "project.assignment": "Assignment",
+  "project.updated": "Project",
+  "task.assigned": "Task",
+  "task.updated": "Task",
 };
 
 function formatTime(value) {
-  if (!value) return '';
+  if (!value) return "";
   const diff = Date.now() - new Date(value).getTime();
   const minutes = Math.floor(diff / 60000);
-  if (minutes < 1) return 'now';
+  if (minutes < 1) return "now";
   if (minutes < 60) return `${minutes}m`;
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}h`;
   return `${Math.floor(hours / 24)}d`;
 }
 
-export default function NotificationBell({ compact = false, align = 'right', vertical = 'down' }) {
+export default function NotificationBell({
+  compact = false,
+  align = "right",
+  vertical = "down",
+}) {
   const navigate = useNavigate();
-  const { loading, markAllRead, markRead, notifications, unreadCount } = useNotifications();
+  const { loading, markAllRead, markRead, notifications, unreadCount } =
+    useNotifications();
   const [open, setOpen] = useState(false);
   const containerRef = useRef(null);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (containerRef.current && !containerRef.current.contains(event.target)) {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(event.target)
+      ) {
         setOpen(false);
       }
     };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
   return (
@@ -44,28 +52,47 @@ export default function NotificationBell({ compact = false, align = 'right', ver
         type="button"
         onClick={() => setOpen((current) => !current)}
         className={clsx(
-          'relative flex h-9 w-9 items-center justify-center rounded-lg border border-[#e1e3e4] bg-white text-[#434654] hover:bg-[#f3f4f5]',
-          compact && 'border-transparent bg-transparent'
+          "flex h-9 items-center text-[#434654] hover:bg-[#f3f4f5] transition-colors",
+          compact
+            ? "w-9 justify-center rounded-lg border border-[#e1e3e4] bg-white"
+            : "w-full gap-3 px-3 justify-start rounded-lg",
         )}
         title="Notifications"
       >
-        <Bell className="h-4 w-4" />
-        {unreadCount > 0 && (
-          <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-[#ba1a1a] px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
-            {unreadCount > 9 ? '9+' : unreadCount}
-          </span>
+        <div className="relative flex items-center justify-center">
+          <Bell className="h-4 w-4" />
+          {compact && unreadCount > 0 && (
+            <span className="absolute -right-1 -top-1 min-w-5 rounded-full bg-[#ba1a1a] px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
+              {unreadCount > 9 ? "9+" : unreadCount}
+            </span>
+          )}
+        </div>
+
+        {!compact && (
+          <>
+            <span>Notifications</span>
+            {unreadCount > 0 && (
+              <span className="min-w-5 rounded-full bg-[#ba1a1a] px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
+                {unreadCount > 9 ? "9+" : unreadCount}
+              </span>
+            )}
+          </>
         )}
       </button>
 
       {open && (
-        <div className={clsx(
-          'absolute z-[70] w-[min(360px,calc(100vw-24px))] overflow-hidden rounded-xl border border-[#d8dde6] bg-white shadow-xl',
-          vertical === 'up' ? 'bottom-full mb-2' : 'mt-2',
-          align === 'left' ? 'left-0' : 'right-0'
-        )}>
+        <div
+          className={clsx(
+            "absolute z-[70] w-[min(360px,calc(100vw-24px))] overflow-hidden rounded-xl border border-[#d8dde6] bg-white shadow-xl",
+            vertical === "up" ? "bottom-full mb-2" : "mt-2",
+            align === "left" ? "left-0" : "right-0",
+          )}
+        >
           <div className="flex items-center justify-between border-b border-[#e1e3e4] px-4 py-3">
             <div>
-              <div className="text-sm font-bold text-[#191c1d]">Notifications</div>
+              <div className="text-sm font-bold text-[#191c1d]">
+                Notifications
+              </div>
               <div className="text-xs text-[#737686]">{unreadCount} unread</div>
             </div>
             <button
@@ -86,29 +113,39 @@ export default function NotificationBell({ compact = false, align = 'right', ver
                 Loading
               </div>
             ) : notifications.length === 0 ? (
-              <div className="p-6 text-center text-sm text-[#737686]">No notifications yet.</div>
+              <div className="p-6 text-center text-sm text-[#737686]">
+                No notifications yet.
+              </div>
             ) : (
               notifications.map((notification) => {
                 const unread = !notification.read_at;
                 const safeContent = (
                   <div
                     className={clsx(
-                      'block border-b border-[#eef1f5] px-4 py-3 text-left last:border-0 hover:bg-[#f6f8fb]',
-                      unread && 'bg-[#f0f4ff]'
+                      "block border-b border-[#eef1f5] px-4 py-3 text-left last:border-0 hover:bg-[#f6f8fb]",
+                      unread && "bg-[#f0f4ff]",
                     )}
                   >
                     <div className="mb-1 flex items-center justify-between gap-3">
                       <span className="text-[10px] font-bold uppercase tracking-wider text-[#003fb1]">
                         {typeLabels[notification.type] || notification.category}
                       </span>
-                      <span className="text-[10px] font-semibold text-[#737686]">{formatTime(notification.created_at)}</span>
+                      <span className="text-[10px] font-semibold text-[#737686]">
+                        {formatTime(notification.created_at)}
+                      </span>
                     </div>
-                    <div className="text-sm font-bold leading-snug text-[#191c1d]">{notification.title}</div>
+                    <div className="text-sm font-bold leading-snug text-[#191c1d]">
+                      {notification.title}
+                    </div>
                     {notification.body && (
-                      <div className="mt-1 line-clamp-2 text-xs leading-relaxed text-[#555f6d]">{notification.body}</div>
+                      <div className="mt-1 line-clamp-2 text-xs leading-relaxed text-[#555f6d]">
+                        {notification.body}
+                      </div>
                     )}
                     {notification.project_name && (
-                      <div className="mt-2 text-[11px] font-semibold text-[#737686]">{notification.project_name}</div>
+                      <div className="mt-2 text-[11px] font-semibold text-[#737686]">
+                        {notification.project_name}
+                      </div>
                     )}
                   </div>
                 );
@@ -119,7 +156,7 @@ export default function NotificationBell({ compact = false, align = 'right', ver
                     try {
                       await markRead(notification.id);
                     } catch (err) {
-                      console.error('[NotificationBell] markRead failed', err);
+                      console.error("[NotificationBell] markRead failed", err);
                     }
                   }
                   setOpen(false);
@@ -130,7 +167,11 @@ export default function NotificationBell({ compact = false, align = 'right', ver
 
                 if (notification.action_url) {
                   return (
-                    <Link key={notification.id} to={notification.action_url} onClick={handleNotifyClick}>
+                    <Link
+                      key={notification.id}
+                      to={notification.action_url}
+                      onClick={handleNotifyClick}
+                    >
                       {safeContent}
                     </Link>
                   );

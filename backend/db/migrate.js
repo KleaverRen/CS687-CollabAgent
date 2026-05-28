@@ -151,13 +151,26 @@ const createTables = async () => {
         category VARCHAR(64) NOT NULL DEFAULT 'updates',
         title VARCHAR(255) NOT NULL,
         body TEXT,
+        link TEXT,
         entity_type VARCHAR(64),
         entity_id UUID,
         action_url TEXT,
         metadata JSONB DEFAULT '{}',
+        is_read BOOLEAN DEFAULT FALSE,
         read_at TIMESTAMPTZ,
         created_at TIMESTAMPTZ DEFAULT NOW()
       );
+    `);
+
+    await client.query(`
+      ALTER TABLE notifications
+      ADD COLUMN IF NOT EXISTS link TEXT,
+      ADD COLUMN IF NOT EXISTS is_read BOOLEAN DEFAULT FALSE;
+
+      UPDATE notifications
+      SET
+        link = COALESCE(link, action_url),
+        is_read = CASE WHEN read_at IS NOT NULL THEN TRUE ELSE COALESCE(is_read, FALSE) END;
     `);
 
     // Structured feedback from advisors
@@ -234,7 +247,11 @@ const createTables = async () => {
       CREATE INDEX IF NOT EXISTS idx_activity_project_created ON activity_log(project_id, created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_activity_actor_created ON activity_log(actor_id, created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_notifications_user_created ON notifications(user_id, created_at DESC);
-      CREATE INDEX IF NOT EXISTS idx_notifications_user_unread ON notifications(user_id, read_at) WHERE read_at IS NULL;
+    `);
+
+    await client.query(`
+      DROP INDEX IF EXISTS idx_notifications_user_unread;
+      CREATE INDEX idx_notifications_user_unread ON notifications(user_id, is_read, created_at DESC) WHERE is_read = FALSE;
     `);
 
     await client.query('COMMIT');

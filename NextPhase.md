@@ -70,14 +70,14 @@ I categorized 10 potential features across impact, effort, and how well they fil
 Implemented the notifications system and activity feed end to end.
 
 Key pieces:
-- Backend schema/migrations in [backend/db/migrate.js](/Users/rothpanhasethim/Downloads/CityU/CS687/CS687-CollabAgent/backend/db/migrate.js) and [backend/db/migrate_notifications.js](/Users/rothpanhasethim/Downloads/CityU/CS687/CS687-CollabAgent/backend/db/migrate_notifications.js)
-- Notification/activity service in [backend/services/notificationService.js](/Users/rothpanhasethim/Downloads/CityU/CS687/CS687-CollabAgent/backend/services/notificationService.js)
-- Authenticated REST + SSE APIs in [backend/routes/notifications.js](/Users/rothpanhasethim/Downloads/CityU/CS687/CS687-CollabAgent/backend/routes/notifications.js)
-- Event emission from project/task actions in [backend/routes/projects.js](/Users/rothpanhasethim/Downloads/CityU/CS687/CS687-CollabAgent/backend/routes/projects.js) and [backend/routes/tasks.js](/Users/rothpanhasethim/Downloads/CityU/CS687/CS687-CollabAgent/backend/routes/tasks.js)
-- Frontend notification state/SSE provider, bell dropdown, and activity feed in [NotificationContext.jsx](/Users/rothpanhasethim/Downloads/CityU/CS687/CS687-CollabAgent/frontend/src/context/NotificationContext.jsx), [NotificationBell.jsx](/Users/rothpanhasethim/Downloads/CityU/CS687/CS687-CollabAgent/frontend/src/components/NotificationBell.jsx), and [ActivityFeed.jsx](/Users/rothpanhasethim/Downloads/CityU/CS687/CS687-CollabAgent/frontend/src/components/ActivityFeed.jsx)
+- Backend schema/migrations in [backend/db/migrate.js](./backend/db/migrate.js) and [backend/db/migrate_notifications.js](./backend/db/migrate_notifications.js)
+- Notification/activity service in [backend/services/notificationService.js](./backend/services/notificationService.js)
+- Authenticated REST + SSE APIs in [backend/routes/notifications.js](./backend/routes/notifications.js)
+- Event emission from project/task actions in [backend/routes/projects.js](./backend/routes/projects.js) and [backend/routes/tasks.js](./backend/routes/tasks.js)
+- Frontend notification state/SSE provider, bell dropdown, and activity feed in [frontend/src/context/NotificationContext.jsx](./frontend/src/context/NotificationContext.jsx), [frontend/src/components/NotificationBell.jsx](./frontend/src/components/NotificationBell.jsx), and [frontend/src/components/ActivityFeed.jsx](./frontend/src/components/ActivityFeed.jsx)
 - Project overview now renders persisted project activity.
 - README documentation added under “Notifications And Activity Feed”.
-- Backend unit tests added in [backend/test/notifications.test.js](/Users/rothpanhasethim/Downloads/CityU/CS687/CS687-CollabAgent/backend/test/notifications.test.js)
+- Backend unit tests added in [backend/test/notifications.test.js](./backend/test/notifications.test.js)
 
 Verification:
 - `npm run db:migrate` passed.

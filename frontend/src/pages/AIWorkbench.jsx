@@ -1,10 +1,15 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
-import clsx from 'clsx';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { useParams } from "react-router-dom";
+import clsx from "clsx";
 import {
   AlertTriangle,
   AtSign,
-  Bell,
   Bot,
   Check,
   CheckCircle2,
@@ -17,70 +22,109 @@ import {
   Paperclip,
   Search,
   Send,
-  Settings,
   Sparkles,
   Upload,
   Users,
   Wand2,
-} from 'lucide-react';
-import toast from 'react-hot-toast';
-import ReactMarkdown from 'react-markdown';
-import Layout from '../components/Layout';
-import { useAuth } from '../context/AuthContext';
-import api from '../utils/api';
+} from "lucide-react";
+import toast from "react-hot-toast";
+import ReactMarkdown from "react-markdown";
+import Layout from "../components/Layout";
+import { useAuth } from "../context/AuthContext";
+import api from "../utils/api";
 
 const tabs = [
-  { id: 'rag', label: 'Knowledge Agent', shortLabel: 'Knowledge', icon: FileText, tone: 'emerald', status: 'Searching' },
-  { id: 'task', label: 'Task Orchestrator', shortLabel: 'Tasks', icon: Bot, tone: 'blue', status: 'Analyzing' },
-  { id: 'meeting', label: 'Team Coordinator', shortLabel: 'Team', icon: Users, tone: 'slate', status: 'Idle' },
-  { id: 'feedback', label: 'Feedback Agent', shortLabel: 'Feedback', icon: FileText, tone: 'red', status: 'Idle' },
-  { id: 'progress', label: 'Advisor Analyst', shortLabel: 'Advisor', icon: Sparkles, tone: 'violet', status: 'Ready' },
+  {
+    id: "rag",
+    label: "Knowledge Agent",
+    shortLabel: "Knowledge",
+    icon: FileText,
+    tone: "emerald",
+    status: "Searching",
+  },
+  {
+    id: "task",
+    label: "Task Orchestrator",
+    shortLabel: "Tasks",
+    icon: Bot,
+    tone: "blue",
+    status: "Analyzing",
+  },
+  {
+    id: "meeting",
+    label: "Team Coordinator",
+    shortLabel: "Team",
+    icon: Users,
+    tone: "slate",
+    status: "Idle",
+  },
+  {
+    id: "feedback",
+    label: "Feedback Agent",
+    shortLabel: "Feedback",
+    icon: FileText,
+    tone: "red",
+    status: "Idle",
+  },
+  {
+    id: "progress",
+    label: "Advisor Analyst",
+    shortLabel: "Advisor",
+    icon: Sparkles,
+    tone: "violet",
+    status: "Ready",
+  },
 ];
 
-const buttonBase = 'inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-4 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60';
+const buttonBase =
+  "inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-4 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60";
 const primaryButton = `${buttonBase} bg-[#0b47c2] text-white hover:bg-[#1353d8]`;
 const secondaryButton = `${buttonBase} border border-[#b9c0d4] bg-white text-[#191c1d] hover:bg-[#f3f6ff]`;
-const fieldClass = 'w-full rounded-lg border border-[#b9c0d4] bg-white px-3 py-2.5 text-sm text-[#191c1d] outline-none transition-all placeholder:text-[#6b7280] focus:border-[#0b47c2] focus:ring-2 focus:ring-[#0b47c2]/20';
-const labelClass = 'mb-1.5 block text-xs font-bold uppercase tracking-[0.12em] text-[#4b5563]';
+const fieldClass =
+  "w-full rounded-lg border border-[#b9c0d4] bg-white px-3 py-2.5 text-sm text-[#191c1d] outline-none transition-all placeholder:text-[#6b7280] focus:border-[#0b47c2] focus:ring-2 focus:ring-[#0b47c2]/20";
+const labelClass =
+  "mb-1.5 block text-xs font-bold uppercase tracking-[0.12em] text-[#4b5563]";
 
 const statusClass = {
-  Analyzing: 'bg-[#1f5de8] text-white',
-  Searching: 'bg-[#84efbd] text-[#005438]',
-  Idle: 'bg-[#dfe3e8] text-[#434654]',
-  Ready: 'bg-[#e8ddff] text-[#4f2ca1]',
-  Running: 'bg-[#1f5de8] text-white',
-  Queued: 'bg-[#fff3c4] text-[#6b4d00]',
-  Draft: 'bg-[#dbeafe] text-[#003fb1]',
-  Complete: 'bg-[#84efbd] text-[#005438]',
+  Analyzing: "bg-[#1f5de8] text-white",
+  Searching: "bg-[#84efbd] text-[#005438]",
+  Idle: "bg-[#dfe3e8] text-[#434654]",
+  Ready: "bg-[#e8ddff] text-[#4f2ca1]",
+  Running: "bg-[#1f5de8] text-white",
+  Queued: "bg-[#fff3c4] text-[#6b4d00]",
+  Draft: "bg-[#dbeafe] text-[#003fb1]",
+  Complete: "bg-[#84efbd] text-[#005438]",
 };
 
 const toneClass = {
-  blue: 'bg-[#1f5de8] text-white',
-  emerald: 'bg-[#005438] text-white',
-  slate: 'bg-[#5f6b7a] text-white',
-  red: 'bg-[#c51620] text-white',
-  violet: 'bg-[#6d3fd1] text-white',
+  blue: "bg-[#1f5de8] text-white",
+  emerald: "bg-[#005438] text-white",
+  slate: "bg-[#5f6b7a] text-white",
+  red: "bg-[#c51620] text-white",
+  violet: "bg-[#6d3fd1] text-white",
 };
 
 const actionLabels = {
-  ingest: 'Document Ingest',
-  rag: 'Chat Query',
-  task: 'Task Generation',
-  meeting: 'Thread Summary',
-  feedback: 'Feedback Analysis',
-  progress: 'Progress Report',
-  'confirm-task': 'Task Confirmation',
+  ingest: "Document Ingest",
+  rag: "Chat Query",
+  task: "Task Generation",
+  meeting: "Thread Summary",
+  feedback: "Feedback Analysis",
+  progress: "Progress Report",
+  "confirm-task": "Task Confirmation",
 };
 
 const workbenchStateVersion = 1;
 
-const getSessionGreeting = () => ([{
-  id: `agent-${Date.now()}`,
-  sender: 'agent',
-  agentId: 'rag',
-  timestamp: new Date().toISOString(),
-  text: 'Fresh AI agent session initialized. Select an agent or send a prompt to start a new workbench run.',
-}]);
+const getSessionGreeting = () => [
+  {
+    id: `agent-${Date.now()}`,
+    sender: "agent",
+    agentId: "rag",
+    timestamp: new Date().toISOString(),
+    text: "Fresh AI agent session initialized. Select an agent or send a prompt to start a new workbench run.",
+  },
+];
 
 class WorkbenchErrorBoundary extends React.Component {
   constructor(props) {
@@ -93,18 +137,33 @@ class WorkbenchErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, info) {
-    console.error('[AIWorkbench] Render failure:', error, info);
+    console.error("[AIWorkbench] Render failure:", error, info);
   }
 
   render() {
     if (!this.state.hasError) return this.props.children;
 
     return (
-      <div className={clsx('m-6', 'rounded-lg', 'border', 'border-[#ffd1ce]', 'bg-[#fff7f6]', 'p-6', 'text-[#191c1d]')}>
-        <h2 className={clsx('text-lg', 'font-bold', 'text-[#a40000]')}>Something went wrong</h2>
-        <p className={clsx('mt-2', 'text-sm', 'leading-6')}>The AI Workbench could not render this view. Reload the page or reset this panel to continue.</p>
+      <div
+        className={clsx(
+          "m-6",
+          "rounded-lg",
+          "border",
+          "border-[#ffd1ce]",
+          "bg-[#fff7f6]",
+          "p-6",
+          "text-[#191c1d]",
+        )}
+      >
+        <h2 className={clsx("text-lg", "font-bold", "text-[#a40000]")}>
+          Something went wrong
+        </h2>
+        <p className={clsx("mt-2", "text-sm", "leading-6")}>
+          The AI Workbench could not render this view. Reload the page or reset
+          this panel to continue.
+        </p>
         <button
-          className={clsx(primaryButton, 'mt-4')}
+          className={clsx(primaryButton, "mt-4")}
           onClick={() => this.setState({ hasError: false })}
         >
           Reset panel
@@ -117,26 +176,81 @@ class WorkbenchErrorBoundary extends React.Component {
 function ResultBlock({ title, children }) {
   if (!children) return null;
   return (
-    <section className={clsx('rounded-lg', 'border', 'border-[#d5d9e7]', 'bg-white', 'p-4')}>
-      <h3 className={clsx('mb-3', 'text-xs', 'font-bold', 'uppercase', 'tracking-[0.12em]', 'text-[#4b5563]')}>{title}</h3>
+    <section
+      className={clsx(
+        "rounded-lg",
+        "border",
+        "border-[#d5d9e7]",
+        "bg-white",
+        "p-4",
+      )}
+    >
+      <h3
+        className={clsx(
+          "mb-3",
+          "text-xs",
+          "font-bold",
+          "uppercase",
+          "tracking-[0.12em]",
+          "text-[#4b5563]",
+        )}
+      >
+        {title}
+      </h3>
       {children}
     </section>
   );
 }
 
 function LoadingText({ loading, idle }) {
-  if (!loading) return <span className={clsx('text-sm', 'text-[#737686]')}>{idle}</span>;
+  if (!loading)
+    return <span className={clsx("text-sm", "text-[#737686]")}>{idle}</span>;
 
   return (
-    <div className={clsx('space-y-3')}>
-      <div className={clsx('flex', 'items-center', 'gap-2', 'text-sm', 'font-semibold', 'text-[#303846]')}>
-        <Loader2 className={clsx('h-4', 'w-4', 'animate-spin', 'text-[#0b47c2]')} />
+    <div className={clsx("space-y-3")}>
+      <div
+        className={clsx(
+          "flex",
+          "items-center",
+          "gap-2",
+          "text-sm",
+          "font-semibold",
+          "text-[#303846]",
+        )}
+      >
+        <Loader2
+          className={clsx("h-4", "w-4", "animate-spin", "text-[#0b47c2]")}
+        />
         Running model...
       </div>
-      <div className={clsx('space-y-2')}>
-        <div className={clsx('h-3', 'w-full', 'animate-pulse', 'rounded', 'bg-[#dfe5f4]')} />
-        <div className={clsx('h-3', 'w-5/6', 'animate-pulse', 'rounded', 'bg-[#e8ecf7]')} />
-        <div className={clsx('h-3', 'w-2/3', 'animate-pulse', 'rounded', 'bg-[#eef1f8]')} />
+      <div className={clsx("space-y-2")}>
+        <div
+          className={clsx(
+            "h-3",
+            "w-full",
+            "animate-pulse",
+            "rounded",
+            "bg-[#dfe5f4]",
+          )}
+        />
+        <div
+          className={clsx(
+            "h-3",
+            "w-5/6",
+            "animate-pulse",
+            "rounded",
+            "bg-[#e8ecf7]",
+          )}
+        />
+        <div
+          className={clsx(
+            "h-3",
+            "w-2/3",
+            "animate-pulse",
+            "rounded",
+            "bg-[#eef1f8]",
+          )}
+        />
       </div>
     </div>
   );
@@ -171,8 +285,14 @@ function StreamingMessage({ text, stream = false }) {
 function AgentAvatar({ agent, className }) {
   const Icon = agent.icon;
   return (
-    <div className={clsx('flex h-12 w-12 shrink-0 items-center justify-center rounded text-white shadow-sm', toneClass[agent.tone], className)}>
-      <Icon className={clsx('h-6', 'w-6')} />
+    <div
+      className={clsx(
+        "flex h-12 w-12 shrink-0 items-center justify-center rounded text-white shadow-sm",
+        toneClass[agent.tone],
+        className,
+      )}
+    >
+      <Icon className={clsx("h-6", "w-6")} />
     </div>
   );
 }
@@ -180,97 +300,166 @@ function AgentAvatar({ agent, className }) {
 export default function AIWorkbench() {
   const { id: projectId } = useParams();
   const { user } = useAuth();
-  const sessionIdRef = useRef('');
-  const restoredProjectRef = useRef('');
-  const [activeTab, setActiveTab] = useState('rag');
-  const [loadingAction, setLoadingAction] = useState('');
-  const [selectedProvider, setSelectedProvider] = useState('auto');
-  const [searchTerm, setSearchTerm] = useState('');
+  const sessionIdRef = useRef("");
+  const restoredProjectRef = useRef("");
+  const [activeTab, setActiveTab] = useState("rag");
+  const [loadingAction, setLoadingAction] = useState("");
+  const [selectedProvider, setSelectedProvider] = useState("auto");
+  const [searchTerm, setSearchTerm] = useState("");
   const [ingestionEvents, setIngestionEvents] = useState([]);
   const [chatMessages, setChatMessages] = useState(() => getSessionGreeting());
 
-  const [docTitle, setDocTitle] = useState('');
-  const [docContent, setDocContent] = useState('');
-  const [ragQuery, setRagQuery] = useState('');
+  const [docTitle, setDocTitle] = useState("");
+  const [docContent, setDocContent] = useState("");
+  const [ragQuery, setRagQuery] = useState("");
   const [ragAnswer, setRagAnswer] = useState(null);
 
-  const [taskRequest, setTaskRequest] = useState('');
+  const [taskRequest, setTaskRequest] = useState("");
   const [taskDraft, setTaskDraft] = useState(null);
   const [taskDrafts, setTaskDrafts] = useState([]);
   const [taskUpdateDraft, setTaskUpdateDraft] = useState(null);
 
-  const [transcript, setTranscript] = useState('');
+  const [transcript, setTranscript] = useState("");
   const [meetingResult, setMeetingResult] = useState(null);
 
-  const [feedbackBody, setFeedbackBody] = useState('');
-  const [feedbackSeverity, setFeedbackSeverity] = useState('medium');
+  const [feedbackBody, setFeedbackBody] = useState("");
+  const [feedbackSeverity, setFeedbackSeverity] = useState("medium");
   const [feedbackResult, setFeedbackResult] = useState(null);
 
-  const [progressReport, setProgressReport] = useState('');
-  const [progressPrompt, setProgressPrompt] = useState('');
+  const [progressReport, setProgressReport] = useState("");
+  const [progressPrompt, setProgressPrompt] = useState("");
   const [isEditingReport, setIsEditingReport] = useState(false);
 
-  const isAdvisor = user?.role?.toLowerCase() === 'advisor';
-  const activeAgent = useMemo(() => tabs.find(tab => tab.id === activeTab) || tabs[0], [activeTab]);
-  const providerValue = selectedProvider === 'auto' ? null : selectedProvider;
+  const isAdvisor = user?.role?.toLowerCase() === "advisor";
+  const activeAgent = useMemo(
+    () => tabs.find((tab) => tab.id === activeTab) || tabs[0],
+    [activeTab],
+  );
+  const providerValue = selectedProvider === "auto" ? null : selectedProvider;
 
-  const agentDescriptions = useMemo(() => ({
-    rag: ragAnswer
-      ? 'Answer ready from indexed knowledge.'
-      : (docTitle || docContent)
-        ? 'Document ready to index.'
-        : 'Indexing new research material.',
-    task: taskUpdateDraft ? 'Existing task update prepared.' : taskDrafts.length ? `${taskDrafts.length} task drafts prepared.` : taskDraft ? 'Task draft prepared for confirmation.' : taskRequest ? 'Parsing natural language task request.' : 'Refining project milestones for Phase 2.',
-    meeting: meetingResult ? 'Action items extracted from the latest sync.' : transcript ? 'Reviewing meeting transcript.' : 'Ready to align member schedules.',
-    feedback: feedbackResult ? 'Advisor response template prepared.' : feedbackBody ? 'Analyzing advisor feedback.' : 'Awaiting draft submission.',
-    progress: progressReport ? 'Weekly advisor report generated.' : progressPrompt ? 'Report instructions ready.' : 'Monitoring progress signals.',
-  }), [docContent, docTitle, feedbackBody, feedbackResult, meetingResult, progressPrompt, progressReport, ragAnswer, taskDraft, taskDrafts.length, taskRequest, taskUpdateDraft, transcript]);
+  const agentDescriptions = useMemo(
+    () => ({
+      rag: ragAnswer
+        ? "Answer ready from indexed knowledge."
+        : docTitle || docContent
+          ? "Document ready to index."
+          : "Indexing new research material.",
+      task: taskUpdateDraft
+        ? "Existing task update prepared."
+        : taskDrafts.length
+          ? `${taskDrafts.length} task drafts prepared.`
+          : taskDraft
+            ? "Task draft prepared for confirmation."
+            : taskRequest
+              ? "Parsing natural language task request."
+              : "Refining project milestones for Phase 2.",
+      meeting: meetingResult
+        ? "Action items extracted from the latest sync."
+        : transcript
+          ? "Reviewing meeting transcript."
+          : "Ready to align member schedules.",
+      feedback: feedbackResult
+        ? "Advisor response template prepared."
+        : feedbackBody
+          ? "Analyzing advisor feedback."
+          : "Awaiting draft submission.",
+      progress: progressReport
+        ? "Weekly advisor report generated."
+        : progressPrompt
+          ? "Report instructions ready."
+          : "Monitoring progress signals.",
+    }),
+    [
+      docContent,
+      docTitle,
+      feedbackBody,
+      feedbackResult,
+      meetingResult,
+      progressPrompt,
+      progressReport,
+      ragAnswer,
+      taskDraft,
+      taskDrafts.length,
+      taskRequest,
+      taskUpdateDraft,
+      transcript,
+    ],
+  );
 
   const agentStatuses = useMemo(() => {
     const statuses = {
-      rag: ragAnswer ? 'Complete' : (docTitle || docContent || ragQuery) ? 'Ready' : 'Idle',
-      task: taskUpdateDraft || taskDraft || taskDrafts.length ? 'Draft' : taskRequest ? 'Ready' : 'Idle',
-      meeting: meetingResult ? 'Complete' : transcript ? 'Ready' : 'Idle',
-      feedback: feedbackResult ? 'Complete' : feedbackBody ? 'Ready' : 'Idle',
-      progress: progressReport ? 'Complete' : progressPrompt ? 'Ready' : 'Idle',
+      rag: ragAnswer
+        ? "Complete"
+        : docTitle || docContent || ragQuery
+          ? "Ready"
+          : "Idle",
+      task:
+        taskUpdateDraft || taskDraft || taskDrafts.length
+          ? "Draft"
+          : taskRequest
+            ? "Ready"
+            : "Idle",
+      meeting: meetingResult ? "Complete" : transcript ? "Ready" : "Idle",
+      feedback: feedbackResult ? "Complete" : feedbackBody ? "Ready" : "Idle",
+      progress: progressReport ? "Complete" : progressPrompt ? "Ready" : "Idle",
     };
 
-    if (loadingAction === 'ingest') statuses.rag = 'Queued';
-    if (loadingAction === 'rag') statuses.rag = 'Running';
-    if (loadingAction === 'task' || loadingAction === 'confirm-task') statuses.task = 'Running';
-    if (loadingAction === 'meeting') statuses.meeting = 'Running';
-    if (loadingAction === 'feedback') statuses.feedback = 'Running';
-    if (loadingAction === 'progress') statuses.progress = 'Running';
+    if (loadingAction === "ingest") statuses.rag = "Queued";
+    if (loadingAction === "rag") statuses.rag = "Running";
+    if (loadingAction === "task" || loadingAction === "confirm-task")
+      statuses.task = "Running";
+    if (loadingAction === "meeting") statuses.meeting = "Running";
+    if (loadingAction === "feedback") statuses.feedback = "Running";
+    if (loadingAction === "progress") statuses.progress = "Running";
 
     return statuses;
-  }, [docContent, docTitle, feedbackBody, feedbackResult, loadingAction, meetingResult, progressPrompt, progressReport, ragAnswer, ragQuery, taskDraft, taskDrafts.length, taskRequest, taskUpdateDraft, transcript]);
+  }, [
+    docContent,
+    docTitle,
+    feedbackBody,
+    feedbackResult,
+    loadingAction,
+    meetingResult,
+    progressPrompt,
+    progressReport,
+    ragAnswer,
+    ragQuery,
+    taskDraft,
+    taskDrafts.length,
+    taskRequest,
+    taskUpdateDraft,
+    transcript,
+  ]);
 
-  const logWorkbenchActivity = useCallback(async ({ actionType, status, metadata = {} }) => {
-    if (!projectId) return;
+  const logWorkbenchActivity = useCallback(
+    async ({ actionType, status, metadata = {} }) => {
+      if (!projectId) return;
 
-    try {
-      await api.post('/agents/coordination/activity', {
-        projectId,
-        actionType,
-        status,
-        timestamp: new Date().toISOString(),
-        metadata: {
-          sessionId: sessionIdRef.current,
-          activeAgent: activeAgent.label,
-          provider: selectedProvider,
-          ...metadata,
-        },
-      });
-    } catch (err) {
-      console.error('[AIWorkbench] Failed to log activity:', err);
-    }
-  }, [activeAgent.label, projectId, selectedProvider]);
+      try {
+        await api.post("/agents/coordination/activity", {
+          projectId,
+          actionType,
+          status,
+          timestamp: new Date().toISOString(),
+          metadata: {
+            sessionId: sessionIdRef.current,
+            activeAgent: activeAgent.label,
+            provider: selectedProvider,
+            ...metadata,
+          },
+        });
+      } catch (err) {
+        console.error("[AIWorkbench] Failed to log activity:", err);
+      }
+    },
+    [activeAgent.label, projectId, selectedProvider],
+  );
 
   useEffect(() => {
-    sessionIdRef.current = `aiw-${projectId || 'global'}-${Date.now()}`;
-    restoredProjectRef.current = '';
+    sessionIdRef.current = `aiw-${projectId || "global"}-${Date.now()}`;
+    restoredProjectRef.current = "";
 
-    const savedStateKey = `aiworkbench:${projectId || 'global'}:state`;
+    const savedStateKey = `aiworkbench:${projectId || "global"}:state`;
     const savedState = sessionStorage.getItem(savedStateKey);
     let nextState = null;
     try {
@@ -279,80 +468,122 @@ export default function AIWorkbench() {
       sessionStorage.removeItem(savedStateKey);
     }
 
-    setActiveTab(nextState?.activeTab || 'rag');
-    setLoadingAction('');
-    setSelectedProvider(nextState?.selectedProvider || 'auto');
-    setSearchTerm(nextState?.searchTerm || '');
+    setActiveTab(nextState?.activeTab || "rag");
+    setLoadingAction("");
+    setSelectedProvider(nextState?.selectedProvider || "auto");
+    setSearchTerm(nextState?.searchTerm || "");
     setIngestionEvents(nextState?.ingestionEvents || []);
-    setDocTitle(nextState?.docTitle || '');
-    setDocContent(nextState?.docContent || '');
-    setRagQuery(nextState?.ragQuery || '');
+    setDocTitle(nextState?.docTitle || "");
+    setDocContent(nextState?.docContent || "");
+    setRagQuery(nextState?.ragQuery || "");
     setRagAnswer(nextState?.ragAnswer || null);
-    setTaskRequest(nextState?.taskRequest || '');
+    setTaskRequest(nextState?.taskRequest || "");
     setTaskDraft(nextState?.taskDraft || null);
     setTaskDrafts(nextState?.taskDrafts || []);
     setTaskUpdateDraft(nextState?.taskUpdateDraft || null);
-    setTranscript(nextState?.transcript || '');
-    setMeetingResult(nextState?.meetingResult ? {
-      ...nextState.meetingResult,
-      actionItemDrafts: nextState.meetingResult.actionItemDrafts?.map((item, index) => ({
-        ...item,
-        id: item.id || `meeting-action-restored-${index}`,
-      })),
-    } : null);
-    setFeedbackBody(nextState?.feedbackBody || '');
-    setFeedbackSeverity(nextState?.feedbackSeverity || 'medium');
+    setTranscript(nextState?.transcript || "");
+    setMeetingResult(
+      nextState?.meetingResult
+        ? {
+            ...nextState.meetingResult,
+            actionItemDrafts: nextState.meetingResult.actionItemDrafts?.map(
+              (item, index) => ({
+                ...item,
+                id: item.id || `meeting-action-restored-${index}`,
+              }),
+            ),
+          }
+        : null,
+    );
+    setFeedbackBody(nextState?.feedbackBody || "");
+    setFeedbackSeverity(nextState?.feedbackSeverity || "medium");
     setFeedbackResult(nextState?.feedbackResult || null);
-    setProgressReport(nextState?.progressReport || '');
-    setProgressPrompt(nextState?.progressPrompt || '');
+    setProgressReport(nextState?.progressReport || "");
+    setProgressPrompt(nextState?.progressPrompt || "");
     setIsEditingReport(false);
-    setChatMessages(nextState?.chatMessages?.length ? nextState.chatMessages.map((msg) => ({ ...msg, stream: false })) : getSessionGreeting());
-    restoredProjectRef.current = projectId || 'global';
+    setChatMessages(
+      nextState?.chatMessages?.length
+        ? nextState.chatMessages.map((msg) => ({ ...msg, stream: false }))
+        : getSessionGreeting(),
+    );
+    restoredProjectRef.current = projectId || "global";
 
     if (projectId && user?.id) {
-      api.post('/agents/coordination/activity', {
-        projectId,
-        actionType: 'Agent Session Initialized',
-        status: 'success',
-        timestamp: new Date().toISOString(),
-        metadata: {
-          sessionId: sessionIdRef.current,
-          userId: user.id,
-          role: user.role,
-          activeAgent: 'Knowledge Agent',
-          provider: 'auto',
-        },
-      }).catch((err) => console.error('[AIWorkbench] Failed to log session initialization:', err));
+      api
+        .post("/agents/coordination/activity", {
+          projectId,
+          actionType: "Agent Session Initialized",
+          status: "success",
+          timestamp: new Date().toISOString(),
+          metadata: {
+            sessionId: sessionIdRef.current,
+            userId: user.id,
+            role: user.role,
+            activeAgent: "Knowledge Agent",
+            provider: "auto",
+          },
+        })
+        .catch((err) =>
+          console.error(
+            "[AIWorkbench] Failed to log session initialization:",
+            err,
+          ),
+        );
     }
   }, [projectId, user?.id, user?.role]);
 
   useEffect(() => {
-    if (restoredProjectRef.current !== (projectId || 'global')) return;
+    if (restoredProjectRef.current !== (projectId || "global")) return;
 
-    sessionStorage.setItem(`aiworkbench:${projectId || 'global'}:state`, JSON.stringify({
-      version: workbenchStateVersion,
-      activeTab,
-      selectedProvider,
-      searchTerm,
-      ingestionEvents: ingestionEvents.slice(-20),
-      chatMessages,
-      docTitle,
-      docContent,
-      ragQuery,
-      ragAnswer,
-      taskRequest,
-      taskDraft,
-      taskDrafts,
-      taskUpdateDraft,
-      transcript,
-      meetingResult,
-      feedbackBody,
-      feedbackSeverity,
-      feedbackResult,
-      progressReport,
-      progressPrompt,
-    }));
-  }, [activeTab, chatMessages, docContent, docTitle, feedbackBody, feedbackResult, feedbackSeverity, ingestionEvents, meetingResult, progressPrompt, progressReport, projectId, ragAnswer, ragQuery, searchTerm, selectedProvider, taskDraft, taskDrafts, taskRequest, taskUpdateDraft, transcript]);
+    sessionStorage.setItem(
+      `aiworkbench:${projectId || "global"}:state`,
+      JSON.stringify({
+        version: workbenchStateVersion,
+        activeTab,
+        selectedProvider,
+        searchTerm,
+        ingestionEvents: ingestionEvents.slice(-20),
+        chatMessages,
+        docTitle,
+        docContent,
+        ragQuery,
+        ragAnswer,
+        taskRequest,
+        taskDraft,
+        taskDrafts,
+        taskUpdateDraft,
+        transcript,
+        meetingResult,
+        feedbackBody,
+        feedbackSeverity,
+        feedbackResult,
+        progressReport,
+        progressPrompt,
+      }),
+    );
+  }, [
+    activeTab,
+    chatMessages,
+    docContent,
+    docTitle,
+    feedbackBody,
+    feedbackResult,
+    feedbackSeverity,
+    ingestionEvents,
+    meetingResult,
+    progressPrompt,
+    progressReport,
+    projectId,
+    ragAnswer,
+    ragQuery,
+    searchTerm,
+    selectedProvider,
+    taskDraft,
+    taskDrafts,
+    taskRequest,
+    taskUpdateDraft,
+    transcript,
+  ]);
 
   useEffect(() => {
     if (!projectId) return undefined;
@@ -366,7 +597,7 @@ export default function AIWorkbench() {
       if (source) {
         source.close();
       }
-      source = new EventSource('/api/agents/rag/events/stream');
+      source = new EventSource("/api/agents/rag/events/stream");
 
       source.onopen = () => {
         retryCount = 0;
@@ -375,11 +606,15 @@ export default function AIWorkbench() {
       source.onmessage = (event) => {
         try {
           const payload = JSON.parse(event.data);
-          if (payload?.payload?.projectId && payload.payload.projectId !== projectId) return;
+          if (
+            payload?.payload?.projectId &&
+            payload.payload.projectId !== projectId
+          )
+            return;
           setIngestionEvents((events) => [payload, ...events].slice(0, 20));
           retryCount = 0;
         } catch (err) {
-          console.error('[AIWorkbench] Failed to parse RAG event:', err);
+          console.error("[AIWorkbench] Failed to parse RAG event:", err);
         }
       };
 
@@ -411,7 +646,7 @@ export default function AIWorkbench() {
       ...messages,
       {
         id: `user-${Date.now()}`,
-        sender: 'user',
+        sender: "user",
         timestamp: new Date().toISOString(),
         text,
       },
@@ -423,7 +658,7 @@ export default function AIWorkbench() {
       ...messages,
       {
         id: `agent-${Date.now()}`,
-        sender: 'agent',
+        sender: "agent",
         agentId,
         timestamp: new Date().toISOString(),
         text,
@@ -434,11 +669,11 @@ export default function AIWorkbench() {
 
   const handleToolSwitch = (nextTab) => {
     if (nextTab === activeTab) return;
-    const nextAgent = tabs.find(tab => tab.id === nextTab);
+    const nextAgent = tabs.find((tab) => tab.id === nextTab);
     setActiveTab(nextTab);
     logWorkbenchActivity({
-      actionType: 'Tool Switch',
-      status: 'success',
+      actionType: "Tool Switch",
+      status: "success",
       metadata: {
         fromAgent: activeAgent.label,
         toAgent: nextAgent?.label,
@@ -448,207 +683,250 @@ export default function AIWorkbench() {
 
   const runAction = async (key, action) => {
     setLoadingAction(key);
-    const actionType = actionLabels[key] || 'Agent Request';
+    const actionType = actionLabels[key] || "Agent Request";
     try {
       const result = await action();
       if (result === false) return false;
       await logWorkbenchActivity({
-        actionType: 'Agent Response',
-        status: 'success',
+        actionType: "Agent Response",
+        status: "success",
         metadata: { workflow: key, responseType: actionType },
       });
-      appendAgentMessage(`${activeAgent.label} completed ${actionType.toLowerCase()}. Review the generated output below.`, activeTab);
+      appendAgentMessage(
+        `${activeAgent.label} completed ${actionType.toLowerCase()}. Review the generated output below.`,
+        activeTab,
+      );
       return true;
     } catch (err) {
       await logWorkbenchActivity({
-        actionType: 'Agent Response',
-        status: 'failed',
+        actionType: "Agent Response",
+        status: "failed",
         metadata: {
           workflow: key,
           responseType: actionType,
           error: err.response?.data?.error || err.message,
         },
       });
-      toast.error(err.response?.data?.error || 'AI request failed.');
+      toast.error(err.response?.data?.error || "AI request failed.");
       return false;
     } finally {
-      setLoadingAction('');
+      setLoadingAction("");
     }
   };
 
-  const ingestDocument = () => runAction('ingest', async () => {
-    if (!docTitle.trim() || !docContent.trim()) {
-      toast.error('Add a document title and content first.');
-      return false;
-    }
-    await api.post('/agents/rag/ingest', {
-      title: docTitle,
-      content: docContent,
-      projectId,
+  const ingestDocument = () =>
+    runAction("ingest", async () => {
+      if (!docTitle.trim() || !docContent.trim()) {
+        toast.error("Add a document title and content first.");
+        return false;
+      }
+      await api.post("/agents/rag/ingest", {
+        title: docTitle,
+        content: docContent,
+        projectId,
+      });
+      setDocTitle("");
+      setDocContent("");
+      toast.success("Document queued for indexing.");
     });
-    setDocTitle('');
-    setDocContent('');
-    toast.success('Document queued for indexing.');
-  });
 
-  const askDocuments = () => runAction('rag', async () => {
-    if (!ragQuery.trim()) {
-      toast.error('Enter a question first.');
-      return false;
-    }
-    const { data } = await api.post('/agents/rag/query', {
-      query: ragQuery,
-      projectId,
-      limit: 3,
-      provider: providerValue,
+  const askDocuments = () =>
+    runAction("rag", async () => {
+      if (!ragQuery.trim()) {
+        toast.error("Enter a question first.");
+        return false;
+      }
+      const { data } = await api.post("/agents/rag/query", {
+        query: ragQuery,
+        projectId,
+        limit: 3,
+        provider: providerValue,
+      });
+      setRagAnswer(data);
     });
-    setRagAnswer(data);
-  });
 
   const shouldUpdateExistingTask = (request) => {
-    const text = String(request || '').toLowerCase();
-    if (/\b(create|new|add)\b/.test(text) && !/\b(existing|current|already|todo|to do)\b/.test(text)) return false;
-    return /\b(update|change|set|deadline|due|reassign)\b/.test(text)
-      || (/\b(assign)\b/.test(text) && /\b(task|todo|to do|existing|current|already)\b/.test(text));
+    const text = String(request || "").toLowerCase();
+    if (
+      /\b(create|new|add)\b/.test(text) &&
+      !/\b(existing|current|already|todo|to do)\b/.test(text)
+    )
+      return false;
+    return (
+      /\b(update|change|set|deadline|due|reassign)\b/.test(text) ||
+      (/\b(assign)\b/.test(text) &&
+        /\b(task|todo|to do|existing|current|already)\b/.test(text))
+    );
   };
 
-  const parseTask = () => runAction('task', async () => {
-    if (!taskRequest.trim()) {
-      toast.error('Describe the task first.');
-      return false;
-    }
+  const parseTask = () =>
+    runAction("task", async () => {
+      if (!taskRequest.trim()) {
+        toast.error("Describe the task first.");
+        return false;
+      }
 
-    if (shouldUpdateExistingTask(taskRequest)) {
-      const { data } = await api.post('/agents/task/update-existing', {
+      if (shouldUpdateExistingTask(taskRequest)) {
+        const { data } = await api.post("/agents/task/update-existing", {
+          request: taskRequest,
+          projectId,
+          provider: providerValue,
+        });
+        setTaskDraft(null);
+        setTaskDrafts([]);
+        setTaskUpdateDraft(data.updateDraft);
+        return true;
+      }
+
+      const { data } = await api.post("/agents/task/parse", {
         request: taskRequest,
         projectId,
         provider: providerValue,
       });
-      setTaskDraft(null);
-      setTaskDrafts([]);
-      setTaskUpdateDraft(data.updateDraft);
-      return true;
-    }
-
-    const { data } = await api.post('/agents/task/parse', {
-      request: taskRequest,
-      projectId,
-      provider: providerValue,
-    });
-    setTaskUpdateDraft(null);
-    if (Array.isArray(data.drafts) && data.drafts.length) {
-      setTaskDraft(null);
-      setTaskDrafts(data.drafts);
-    } else {
-      setTaskDrafts([]);
-      setTaskDraft(data.draft);
-    }
-  });
-
-  const confirmTask = (draft, assignToSelf = false) => runAction('confirm-task', async () => {
-    const { data } = await api.post('/agents/task/confirm', {
-      draft: assignToSelf ? { ...draft, assignee_name: 'me' } : draft,
-      projectId,
-      user_confirmed: true,
-    });
-    toast.success(data.task?.assignee_name ? `Task assigned to ${data.task.assignee_name}.` : 'Task created.');
-  });
-
-  const confirmTaskDrafts = (drafts) => runAction('confirm-task', async () => {
-    const results = await Promise.allSettled(
-      drafts.map((draft) => api.post('/agents/task/confirm', {
-        draft,
-        projectId,
-        user_confirmed: true,
-      })),
-    );
-
-    const created = [];
-    const failedDrafts = [];
-    const errors = [];
-
-    results.forEach((result, index) => {
-      if (result.status === 'fulfilled') {
-        created.push(result.value.data.task);
+      setTaskUpdateDraft(null);
+      if (Array.isArray(data.drafts) && data.drafts.length) {
+        setTaskDraft(null);
+        setTaskDrafts(data.drafts);
       } else {
-        failedDrafts.push(drafts[index]);
-        errors.push(result.reason?.response?.data?.error || result.reason?.message || 'Unknown error');
+        setTaskDrafts([]);
+        setTaskDraft(data.draft);
       }
     });
 
-    setTaskDrafts(failedDrafts);
-
-    if (created.length > 0) {
-      toast.success(`${created.length} task${created.length === 1 ? '' : 's'} created.`);
-    }
-    if (failedDrafts.length > 0) {
-      toast.error(`${failedDrafts.length} draft${failedDrafts.length === 1 ? '' : 's'} failed: ${errors.join('; ')}`);
-    }
-
-    return created.length > 0;
-  });
-
-  const confirmTaskUpdate = (updateDraft) => runAction('confirm-task', async () => {
-    const { data } = await api.post('/agents/task/update-existing/confirm', {
-      updateDraft,
-      projectId,
-      user_confirmed: true,
+  const confirmTask = (draft, assignToSelf = false) =>
+    runAction("confirm-task", async () => {
+      const { data } = await api.post("/agents/task/confirm", {
+        draft: assignToSelf ? { ...draft, assignee_name: "me" } : draft,
+        projectId,
+        user_confirmed: true,
+      });
+      toast.success(
+        data.task?.assignee_name
+          ? `Task assigned to ${data.task.assignee_name}.`
+          : "Task created.",
+      );
     });
-    setTaskUpdateDraft(null);
-    toast.success(data.task?.assignee_name ? `Task updated for ${data.task.assignee_name}.` : 'Task updated.');
-  });
 
-  const summarizeMeeting = () => runAction('meeting', async () => {
-    if (!transcript.trim()) {
-      toast.error('Paste meeting notes first.');
-      return false;
-    }
-    const { data } = await api.post('/agents/coordination/meeting', {
-      transcript,
-      projectId,
-      provider: providerValue,
+  const confirmTaskDrafts = (drafts) =>
+    runAction("confirm-task", async () => {
+      const results = await Promise.allSettled(
+        drafts.map((draft) =>
+          api.post("/agents/task/confirm", {
+            draft,
+            projectId,
+            user_confirmed: true,
+          }),
+        ),
+      );
+
+      const created = [];
+      const failedDrafts = [];
+      const errors = [];
+
+      results.forEach((result, index) => {
+        if (result.status === "fulfilled") {
+          created.push(result.value.data.task);
+        } else {
+          failedDrafts.push(drafts[index]);
+          errors.push(
+            result.reason?.response?.data?.error ||
+              result.reason?.message ||
+              "Unknown error",
+          );
+        }
+      });
+
+      setTaskDrafts(failedDrafts);
+
+      if (created.length > 0) {
+        toast.success(
+          `${created.length} task${created.length === 1 ? "" : "s"} created.`,
+        );
+      }
+      if (failedDrafts.length > 0) {
+        toast.error(
+          `${failedDrafts.length} draft${failedDrafts.length === 1 ? "" : "s"} failed: ${errors.join("; ")}`,
+        );
+      }
+
+      return created.length > 0;
     });
-    data.actionItemDrafts = data.actionItemDrafts?.map((item, index) => ({
-      ...item,
-      id: item.id || `meeting-action-${Date.now()}-${index}`,
-    }));
-    setMeetingResult(data);
-  });
 
-  const submitFeedback = () => runAction('feedback', async () => {
-    if (!feedbackBody.trim()) {
-      toast.error('Add feedback text first.');
-      return false;
-    }
-    const { data } = await api.post('/agents/feedback/submit', {
-      projectId,
-      body: feedbackBody,
-      severity: feedbackSeverity,
-      category: 'general',
-      provider: providerValue,
+  const confirmTaskUpdate = (updateDraft) =>
+    runAction("confirm-task", async () => {
+      const { data } = await api.post("/agents/task/update-existing/confirm", {
+        updateDraft,
+        projectId,
+        user_confirmed: true,
+      });
+      setTaskUpdateDraft(null);
+      toast.success(
+        data.task?.assignee_name
+          ? `Task updated for ${data.task.assignee_name}.`
+          : "Task updated.",
+      );
     });
-    setFeedbackResult(data);
-    toast.success('Feedback recorded.');
-  });
 
-  const generateProgressReport = () => runAction('progress', async () => {
-    const params = new URLSearchParams({ projectId });
-    if (providerValue) params.set('provider', providerValue);
-    const { data } = await api.get(`/agents/progress/report?${params.toString()}`);
-    setProgressReport(data.report);
-  });
+  const summarizeMeeting = () =>
+    runAction("meeting", async () => {
+      if (!transcript.trim()) {
+        toast.error("Paste meeting notes first.");
+        return false;
+      }
+      const { data } = await api.post("/agents/coordination/meeting", {
+        transcript,
+        projectId,
+        provider: providerValue,
+      });
+      data.actionItemDrafts = data.actionItemDrafts?.map((item, index) => ({
+        ...item,
+        id: item.id || `meeting-action-${Date.now()}-${index}`,
+      }));
+      setMeetingResult(data);
+    });
+
+  const submitFeedback = () =>
+    runAction("feedback", async () => {
+      if (!feedbackBody.trim()) {
+        toast.error("Add feedback text first.");
+        return false;
+      }
+      const { data } = await api.post("/agents/feedback/submit", {
+        projectId,
+        body: feedbackBody,
+        severity: feedbackSeverity,
+        category: "general",
+        provider: providerValue,
+      });
+      setFeedbackResult(data);
+      toast.success("Feedback recorded.");
+    });
+
+  const generateProgressReport = () =>
+    runAction("progress", async () => {
+      const params = new URLSearchParams({ projectId });
+      if (providerValue) params.set("provider", providerValue);
+      const { data } = await api.get(
+        `/agents/progress/report?${params.toString()}`,
+      );
+      setProgressReport(data.report);
+    });
 
   const runActiveAgent = async () => {
-    const prompt = String(composerValue || '').trim();
-    if (activeTab !== 'progress' && !prompt) {
-      toast.error(`Enter a ${activeAgent.shortLabel.toLowerCase()} prompt first.`);
+    const prompt = String(composerValue || "").trim();
+    if (activeTab !== "progress" && !prompt) {
+      toast.error(
+        `Enter a ${activeAgent.shortLabel.toLowerCase()} prompt first.`,
+      );
       return;
     }
 
-    appendUserMessage(prompt || `${activeAgent.label} requested a fresh progress report.`);
+    appendUserMessage(
+      prompt || `${activeAgent.label} requested a fresh progress report.`,
+    );
     logWorkbenchActivity({
-      actionType: 'Chat Query',
-      status: 'submitted',
+      actionType: "Chat Query",
+      status: "submitted",
       metadata: {
         workflow: activeTab,
         promptPreview: prompt.slice(0, 160),
@@ -656,10 +934,10 @@ export default function AIWorkbench() {
     });
 
     let completed = false;
-    if (activeTab === 'rag') completed = await askDocuments();
-    else if (activeTab === 'task') completed = await parseTask();
-    else if (activeTab === 'meeting') completed = await summarizeMeeting();
-    else if (activeTab === 'feedback') completed = await submitFeedback();
+    if (activeTab === "rag") completed = await askDocuments();
+    else if (activeTab === "task") completed = await parseTask();
+    else if (activeTab === "meeting") completed = await summarizeMeeting();
+    else if (activeTab === "feedback") completed = await submitFeedback();
     else completed = await generateProgressReport();
 
     if (completed) clearActiveComposer();
@@ -668,11 +946,27 @@ export default function AIWorkbench() {
   const renderRag = () => (
     <div className="space-y-4">
       <ResultBlock title="Index Project Document">
-        <div className={clsx('grid', 'gap-3', 'lg:grid-cols-[0.8fr_1.2fr_auto]')}>
-          <input className={fieldClass} value={docTitle} onChange={(e) => setDocTitle(e.target.value)} placeholder="Document title" />
-          <textarea className={`${fieldClass} min-h-11 resize-y`} value={docContent} onChange={(e) => setDocContent(e.target.value)} placeholder="Paste project documentation here." />
-          <button className={secondaryButton} disabled={loadingAction === 'ingest'} onClick={ingestDocument}>
-            <Upload className={clsx('h-4', 'w-4')} />
+        <div
+          className={clsx("grid", "gap-3", "lg:grid-cols-[0.8fr_1.2fr_auto]")}
+        >
+          <input
+            className={fieldClass}
+            value={docTitle}
+            onChange={(e) => setDocTitle(e.target.value)}
+            placeholder="Document title"
+          />
+          <textarea
+            className={`${fieldClass} min-h-11 resize-y`}
+            value={docContent}
+            onChange={(e) => setDocContent(e.target.value)}
+            placeholder="Paste project documentation here."
+          />
+          <button
+            className={secondaryButton}
+            disabled={loadingAction === "ingest"}
+            onClick={ingestDocument}
+          >
+            <Upload className={clsx("h-4", "w-4")} />
             Queue
           </button>
         </div>
@@ -682,12 +976,36 @@ export default function AIWorkbench() {
         <ResultBlock title="Ingestion Activity">
           <div className="space-y-2">
             {ingestionEvents.slice(0, 5).map((event) => (
-              <div key={event.event_id} className={clsx('flex', 'items-center', 'justify-between', 'gap-3', 'rounded-lg', 'bg-[#f3f6ff]', 'p-3', 'text-xs', 'text-[#434654]')}>
+              <div
+                key={event.event_id}
+                className={clsx(
+                  "flex",
+                  "items-center",
+                  "justify-between",
+                  "gap-3",
+                  "rounded-lg",
+                  "bg-[#f3f6ff]",
+                  "p-3",
+                  "text-xs",
+                  "text-[#434654]",
+                )}
+              >
                 <div>
-                  <div className={clsx('font-bold', 'text-[#191c1d]')}>{event.topic}</div>
-                  <div className="mt-1">{event.payload?.title || event.payload?.documentId || 'Project knowledge event'}</div>
+                  <div className={clsx("font-bold", "text-[#191c1d]")}>
+                    {event.topic}
+                  </div>
+                  <div className="mt-1">
+                    {event.payload?.title ||
+                      event.payload?.documentId ||
+                      "Project knowledge event"}
+                  </div>
                 </div>
-                <time className={clsx('shrink-0', 'font-semibold')}>{new Date(event.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time>
+                <time className={clsx("shrink-0", "font-semibold")}>
+                  {new Date(event.timestamp).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </time>
               </div>
             ))}
           </div>
@@ -697,12 +1015,32 @@ export default function AIWorkbench() {
       <ResultBlock title="Knowledge Response">
         {ragAnswer ? (
           <div className="space-y-4">
-            <p className={clsx('whitespace-pre-wrap', 'text-sm', 'leading-6', 'text-[#191c1d]')}>{ragAnswer.answer}</p>
+            <p
+              className={clsx(
+                "whitespace-pre-wrap",
+                "text-sm",
+                "leading-6",
+                "text-[#191c1d]",
+              )}
+            >
+              {ragAnswer.answer}
+            </p>
             {ragAnswer.sources?.length > 0 && (
               <div className="space-y-2">
                 {ragAnswer.sources.map((source) => (
-                  <div key={source.chunkId} className={clsx('rounded-lg', 'bg-[#f3f6ff]', 'p-3', 'text-xs', 'text-[#434654]')}>
-                    <div className={clsx('font-semibold', 'text-[#191c1d]')}>{source.documentTitle}</div>
+                  <div
+                    key={source.chunkId}
+                    className={clsx(
+                      "rounded-lg",
+                      "bg-[#f3f6ff]",
+                      "p-3",
+                      "text-xs",
+                      "text-[#434654]",
+                    )}
+                  >
+                    <div className={clsx("font-semibold", "text-[#191c1d]")}>
+                      {source.documentTitle}
+                    </div>
                     <div className="mt-1">{source.snippet}</div>
                   </div>
                 ))}
@@ -710,64 +1048,244 @@ export default function AIWorkbench() {
             )}
           </div>
         ) : (
-          <LoadingText loading={loadingAction === 'rag'} idle="Ask the knowledge base from the message composer." />
+          <LoadingText
+            loading={loadingAction === "rag"}
+            idle="Ask the knowledge base from the message composer."
+          />
         )}
       </ResultBlock>
     </div>
   );
 
   const renderTask = () => (
-    <ResultBlock title={taskUpdateDraft ? 'Existing Task Update' : taskDrafts.length ? 'Generated Task List' : 'Generated Task'}>
+    <ResultBlock
+      title={
+        taskUpdateDraft
+          ? "Existing Task Update"
+          : taskDrafts.length
+            ? "Generated Task List"
+            : "Generated Task"
+      }
+    >
       {taskUpdateDraft ? (
         <div className="space-y-3">
-          <dl className={clsx('grid', 'gap-3', 'text-sm')}>
-            <div><dt className={clsx('text-xs', 'font-bold', 'uppercase', 'text-[#737686]')}>Task</dt><dd className={clsx('mt-1', 'text-[#191c1d]')}>{taskUpdateDraft.title}</dd></div>
-            <div><dt className={clsx('text-xs', 'font-bold', 'uppercase', 'text-[#737686]')}>Assignee</dt><dd className={clsx('mt-1', 'text-[#191c1d]')}>{taskUpdateDraft.assignee_name || taskUpdateDraft.currentAssigneeName || 'Unassigned'}</dd></div>
-            <div><dt className={clsx('text-xs', 'font-bold', 'uppercase', 'text-[#737686]')}>Deadline</dt><dd className={clsx('mt-1', 'text-[#191c1d]')}>{taskUpdateDraft.deadline || (taskUpdateDraft.currentDeadline ? taskUpdateDraft.currentDeadline.slice(0, 10) : 'No deadline')}</dd></div>
+          <dl className={clsx("grid", "gap-3", "text-sm")}>
+            <div>
+              <dt
+                className={clsx(
+                  "text-xs",
+                  "font-bold",
+                  "uppercase",
+                  "text-[#737686]",
+                )}
+              >
+                Task
+              </dt>
+              <dd className={clsx("mt-1", "text-[#191c1d]")}>
+                {taskUpdateDraft.title}
+              </dd>
+            </div>
+            <div>
+              <dt
+                className={clsx(
+                  "text-xs",
+                  "font-bold",
+                  "uppercase",
+                  "text-[#737686]",
+                )}
+              >
+                Assignee
+              </dt>
+              <dd className={clsx("mt-1", "text-[#191c1d]")}>
+                {taskUpdateDraft.assignee_name ||
+                  taskUpdateDraft.currentAssigneeName ||
+                  "Unassigned"}
+              </dd>
+            </div>
+            <div>
+              <dt
+                className={clsx(
+                  "text-xs",
+                  "font-bold",
+                  "uppercase",
+                  "text-[#737686]",
+                )}
+              >
+                Deadline
+              </dt>
+              <dd className={clsx("mt-1", "text-[#191c1d]")}>
+                {taskUpdateDraft.deadline ||
+                  (taskUpdateDraft.currentDeadline
+                    ? taskUpdateDraft.currentDeadline.slice(0, 10)
+                    : "No deadline")}
+              </dd>
+            </div>
           </dl>
-          <button className={secondaryButton} disabled={loadingAction === 'confirm-task'} onClick={() => confirmTaskUpdate(taskUpdateDraft)}>
-            <Check className={clsx('h-4', 'w-4')} />
+          <button
+            className={secondaryButton}
+            disabled={loadingAction === "confirm-task"}
+            onClick={() => confirmTaskUpdate(taskUpdateDraft)}
+          >
+            <Check className={clsx("h-4", "w-4")} />
             Apply Update
           </button>
         </div>
       ) : taskDrafts.length ? (
         <div className="space-y-4">
-          <div className={clsx('flex', 'items-center', 'justify-between', 'gap-3')}>
-            <p className={clsx('text-sm', 'font-semibold', 'text-[#191c1d]')}>{taskDrafts.length} task drafts ready for review.</p>
-            <button className={secondaryButton} disabled={loadingAction === 'confirm-task'} onClick={() => confirmTaskDrafts(taskDrafts)}>
-              <Check className={clsx('h-4', 'w-4')} />
+          <div
+            className={clsx("flex", "items-center", "justify-between", "gap-3")}
+          >
+            <p className={clsx("text-sm", "font-semibold", "text-[#191c1d]")}>
+              {taskDrafts.length} task drafts ready for review.
+            </p>
+            <button
+              className={secondaryButton}
+              disabled={loadingAction === "confirm-task"}
+              onClick={() => confirmTaskDrafts(taskDrafts)}
+            >
+              <Check className={clsx("h-4", "w-4")} />
               Create All
             </button>
           </div>
           <div className="space-y-3">
             {taskDrafts.map((draft, index) => (
-              <div key={`${draft.title}-${index}`} className={clsx('rounded-lg', 'border', 'border-[#d5d9e7]', 'bg-[#f8f9fb]', 'p-4')}>
-                <div className={clsx('flex', 'flex-wrap', 'items-start', 'justify-between', 'gap-3')}>
+              <div
+                key={`${draft.title}-${index}`}
+                className={clsx(
+                  "rounded-lg",
+                  "border",
+                  "border-[#d5d9e7]",
+                  "bg-[#f8f9fb]",
+                  "p-4",
+                )}
+              >
+                <div
+                  className={clsx(
+                    "flex",
+                    "flex-wrap",
+                    "items-start",
+                    "justify-between",
+                    "gap-3",
+                  )}
+                >
                   <div>
-                    <p className={clsx('text-xs', 'font-bold', 'uppercase', 'tracking-wide', 'text-[#737686]')}>{draft.metadata?.workstream || 'General'}</p>
-                    <h4 className={clsx('mt-1', 'text-sm', 'font-bold', 'text-[#191c1d]')}>{draft.title}</h4>
+                    <p
+                      className={clsx(
+                        "text-xs",
+                        "font-bold",
+                        "uppercase",
+                        "tracking-wide",
+                        "text-[#737686]",
+                      )}
+                    >
+                      {draft.metadata?.workstream || "General"}
+                    </p>
+                    <h4
+                      className={clsx(
+                        "mt-1",
+                        "text-sm",
+                        "font-bold",
+                        "text-[#191c1d]",
+                      )}
+                    >
+                      {draft.title}
+                    </h4>
                   </div>
-                  <span className={clsx('rounded-full', 'bg-white', 'px-3', 'py-1', 'text-xs', 'font-bold', 'capitalize', 'text-[#003fb1]', 'ring-1', 'ring-[#c8cde0]')}>{draft.priority}</span>
+                  <span
+                    className={clsx(
+                      "rounded-full",
+                      "bg-white",
+                      "px-3",
+                      "py-1",
+                      "text-xs",
+                      "font-bold",
+                      "capitalize",
+                      "text-[#003fb1]",
+                      "ring-1",
+                      "ring-[#c8cde0]",
+                    )}
+                  >
+                    {draft.priority}
+                  </span>
                 </div>
-                <p className={clsx('mt-3', 'whitespace-pre-wrap', 'text-sm', 'leading-6', 'text-[#434654]')}>{draft.description}</p>
+                <p
+                  className={clsx(
+                    "mt-3",
+                    "whitespace-pre-wrap",
+                    "text-sm",
+                    "leading-6",
+                    "text-[#434654]",
+                  )}
+                >
+                  {draft.description}
+                </p>
               </div>
             ))}
           </div>
         </div>
       ) : taskDraft ? (
         <div className="space-y-3">
-          <dl className={clsx('grid', 'gap-3', 'text-sm')}>
-            <div><dt className={clsx('text-xs', 'font-bold', 'uppercase', 'text-[#737686]')}>Title</dt><dd className={clsx('mt-1', 'text-[#191c1d]')}>{taskDraft.title}</dd></div>
-            <div><dt className={clsx('text-xs', 'font-bold', 'uppercase', 'text-[#737686]')}>Priority</dt><dd className={clsx('mt-1', 'capitalize', 'text-[#191c1d]')}>{taskDraft.priority}</dd></div>
-            <div><dt className={clsx('text-xs', 'font-bold', 'uppercase', 'text-[#737686]')}>Assignee</dt><dd className={clsx('mt-1', 'text-[#191c1d]')}>{taskDraft.assignee_name || 'Unassigned'}</dd></div>
+          <dl className={clsx("grid", "gap-3", "text-sm")}>
+            <div>
+              <dt
+                className={clsx(
+                  "text-xs",
+                  "font-bold",
+                  "uppercase",
+                  "text-[#737686]",
+                )}
+              >
+                Title
+              </dt>
+              <dd className={clsx("mt-1", "text-[#191c1d]")}>
+                {taskDraft.title}
+              </dd>
+            </div>
+            <div>
+              <dt
+                className={clsx(
+                  "text-xs",
+                  "font-bold",
+                  "uppercase",
+                  "text-[#737686]",
+                )}
+              >
+                Priority
+              </dt>
+              <dd className={clsx("mt-1", "capitalize", "text-[#191c1d]")}>
+                {taskDraft.priority}
+              </dd>
+            </div>
+            <div>
+              <dt
+                className={clsx(
+                  "text-xs",
+                  "font-bold",
+                  "uppercase",
+                  "text-[#737686]",
+                )}
+              >
+                Assignee
+              </dt>
+              <dd className={clsx("mt-1", "text-[#191c1d]")}>
+                {taskDraft.assignee_name || "Unassigned"}
+              </dd>
+            </div>
           </dl>
-          <button className={secondaryButton} disabled={loadingAction === 'confirm-task'} onClick={() => confirmTask(taskDraft, !taskDraft.assignee_name)}>
-            <Check className={clsx('h-4', 'w-4')} />
-            {taskDraft.assignee_name ? 'Create Task' : 'Assign to Me'}
+          <button
+            className={secondaryButton}
+            disabled={loadingAction === "confirm-task"}
+            onClick={() => confirmTask(taskDraft, !taskDraft.assignee_name)}
+          >
+            <Check className={clsx("h-4", "w-4")} />
+            {taskDraft.assignee_name ? "Create Task" : "Assign to Me"}
           </button>
         </div>
       ) : (
-        <LoadingText loading={loadingAction === 'task'} idle="Describe a task in the composer to draft structured work." />
+        <LoadingText
+          loading={loadingAction === "task"}
+          idle="Describe a task in the composer to draft structured work."
+        />
       )}
     </ResultBlock>
   );
@@ -776,24 +1294,59 @@ export default function AIWorkbench() {
     <ResultBlock title="Summary & Action Items">
       {meetingResult ? (
         <div className="space-y-4">
-          <p className={clsx('text-sm', 'leading-6', 'text-[#191c1d]')}>{meetingResult.summary}</p>
+          <p className={clsx("text-sm", "leading-6", "text-[#191c1d]")}>
+            {meetingResult.summary}
+          </p>
           <div className="space-y-2">
             {meetingResult.actionItemDrafts?.map((item) => (
-              <div key={item.id} className={clsx('flex', 'flex-col', 'gap-3', 'rounded-lg', 'bg-[#f3f6ff]', 'p-3', 'sm:flex-row', 'sm:items-center', 'sm:justify-between')}>
+              <div
+                key={item.id}
+                className={clsx(
+                  "flex",
+                  "flex-col",
+                  "gap-3",
+                  "rounded-lg",
+                  "bg-[#f3f6ff]",
+                  "p-3",
+                  "sm:flex-row",
+                  "sm:items-center",
+                  "sm:justify-between",
+                )}
+              >
                 <div>
-                  <div className={clsx('text-sm', 'font-semibold', 'text-[#191c1d]')}>{item.title}</div>
-                  <div className={clsx('text-xs', 'capitalize', 'text-[#737686]')}>{item.priority} priority · {item.assignee_name || 'Unassigned'}</div>
+                  <div
+                    className={clsx(
+                      "text-sm",
+                      "font-semibold",
+                      "text-[#191c1d]",
+                    )}
+                  >
+                    {item.title}
+                  </div>
+                  <div
+                    className={clsx("text-xs", "capitalize", "text-[#737686]")}
+                  >
+                    {item.priority} priority ·{" "}
+                    {item.assignee_name || "Unassigned"}
+                  </div>
                 </div>
-                <button className={secondaryButton} disabled={loadingAction === 'confirm-task'} onClick={() => confirmTask(item, !item.assignee_name)}>
-                  <Check className={clsx('h-4', 'w-4')} />
-                  {item.assignee_name ? 'Create' : 'Assign to Me'}
+                <button
+                  className={secondaryButton}
+                  disabled={loadingAction === "confirm-task"}
+                  onClick={() => confirmTask(item, !item.assignee_name)}
+                >
+                  <Check className={clsx("h-4", "w-4")} />
+                  {item.assignee_name ? "Create" : "Assign to Me"}
                 </button>
               </div>
             ))}
           </div>
         </div>
       ) : (
-        <LoadingText loading={loadingAction === 'meeting'} idle="Paste meeting notes in the composer to extract actions." />
+        <LoadingText
+          loading={loadingAction === "meeting"}
+          idle="Paste meeting notes in the composer to extract actions."
+        />
       )}
     </ResultBlock>
   );
@@ -801,9 +1354,13 @@ export default function AIWorkbench() {
   const renderFeedback = () => (
     <div className="space-y-4">
       <ResultBlock title="Suggested Response">
-        <div className={clsx('mb-4', 'max-w-xs')}>
+        <div className={clsx("mb-4", "max-w-xs")}>
           <label className={labelClass}>Severity</label>
-          <select className={fieldClass} value={feedbackSeverity} onChange={(e) => setFeedbackSeverity(e.target.value)}>
+          <select
+            className={fieldClass}
+            value={feedbackSeverity}
+            onChange={(e) => setFeedbackSeverity(e.target.value)}
+          >
             <option value="low">Low</option>
             <option value="medium">Medium</option>
             <option value="high">High</option>
@@ -813,47 +1370,109 @@ export default function AIWorkbench() {
         {feedbackResult ? (
           <div className="space-y-4">
             <div>
-              <p className={clsx('text-xs', 'font-bold', 'uppercase', 'tracking-wide', 'text-[#737686]')}>Summary</p>
-              <p className={clsx('mt-1', 'text-sm', 'leading-6', 'text-[#191c1d]')}>{feedbackResult.structuredSummary}</p>
+              <p
+                className={clsx(
+                  "text-xs",
+                  "font-bold",
+                  "uppercase",
+                  "tracking-wide",
+                  "text-[#737686]",
+                )}
+              >
+                Summary
+              </p>
+              <p
+                className={clsx(
+                  "mt-1",
+                  "text-sm",
+                  "leading-6",
+                  "text-[#191c1d]",
+                )}
+              >
+                {feedbackResult.structuredSummary}
+              </p>
             </div>
             <div>
-              <p className={clsx('text-xs', 'font-bold', 'uppercase', 'tracking-wide', 'text-[#737686]')}>Template</p>
-              <p className={clsx('mt-1', 'whitespace-pre-wrap', 'text-sm', 'leading-6', 'text-[#191c1d]')}>{feedbackResult.suggestedResponseTemplate}</p>
+              <p
+                className={clsx(
+                  "text-xs",
+                  "font-bold",
+                  "uppercase",
+                  "tracking-wide",
+                  "text-[#737686]",
+                )}
+              >
+                Template
+              </p>
+              <p
+                className={clsx(
+                  "mt-1",
+                  "whitespace-pre-wrap",
+                  "text-sm",
+                  "leading-6",
+                  "text-[#191c1d]",
+                )}
+              >
+                {feedbackResult.suggestedResponseTemplate}
+              </p>
             </div>
           </div>
         ) : (
-          <LoadingText loading={loadingAction === 'feedback'} idle="Paste advisor feedback in the composer for analysis." />
+          <LoadingText
+            loading={loadingAction === "feedback"}
+            idle="Paste advisor feedback in the composer for analysis."
+          />
         )}
       </ResultBlock>
     </div>
   );
 
   const renderProgress = () => (
-    <ResultBlock title={isEditingReport ? 'Report Editor' : 'Report Preview'}>
+    <ResultBlock title={isEditingReport ? "Report Editor" : "Report Preview"}>
       {progressReport ? (
         isEditingReport ? (
           <textarea
-            className={clsx(fieldClass, 'min-h-[320px] font-mono text-[13px] leading-relaxed')}
+            className={clsx(
+              fieldClass,
+              "min-h-[320px] font-mono text-[13px] leading-relaxed",
+            )}
             value={progressReport}
             onChange={(e) => setProgressReport(e.target.value)}
             placeholder="Customize the generated report here..."
           />
         ) : (
-          <div className={clsx('max-w-none', 'rounded-lg', 'border', 'border-[#e1e3e4]', 'bg-[#f8f9fa]', 'p-5', 'text-sm', 'leading-7', 'text-[#191c1d]', 'prose', 'prose-sm')}>
+          <div
+            className={clsx(
+              "max-w-none",
+              "rounded-lg",
+              "border",
+              "border-[#e1e3e4]",
+              "bg-[#f8f9fa]",
+              "p-5",
+              "text-sm",
+              "leading-7",
+              "text-[#191c1d]",
+              "prose",
+              "prose-sm",
+            )}
+          >
             <ReactMarkdown>{progressReport}</ReactMarkdown>
           </div>
         )
       ) : (
-        <LoadingText loading={loadingAction === 'progress'} idle="Generate a weekly progress report from the advisor panel." />
+        <LoadingText
+          loading={loadingAction === "progress"}
+          idle="Generate a weekly progress report from the advisor panel."
+        />
       )}
     </ResultBlock>
   );
 
   const renderWorkflow = () => {
-    if (activeTab === 'rag') return renderRag();
-    if (activeTab === 'task') return renderTask();
-    if (activeTab === 'meeting') return renderMeeting();
-    if (activeTab === 'feedback') return renderFeedback();
+    if (activeTab === "rag") return renderRag();
+    if (activeTab === "task") return renderTask();
+    if (activeTab === "meeting") return renderMeeting();
+    if (activeTab === "feedback") return renderFeedback();
     return renderProgress();
   };
 
@@ -866,301 +1485,988 @@ export default function AIWorkbench() {
   }[activeTab];
 
   const updateComposer = (value) => {
-    if (activeTab === 'rag') setRagQuery(value);
-    if (activeTab === 'task') setTaskRequest(value);
-    if (activeTab === 'meeting') setTranscript(value);
-    if (activeTab === 'feedback') setFeedbackBody(value);
-    if (activeTab === 'progress') setProgressPrompt(value);
+    if (activeTab === "rag") setRagQuery(value);
+    if (activeTab === "task") setTaskRequest(value);
+    if (activeTab === "meeting") setTranscript(value);
+    if (activeTab === "feedback") setFeedbackBody(value);
+    if (activeTab === "progress") setProgressPrompt(value);
   };
 
   const clearActiveComposer = () => {
-    if (activeTab === 'rag') setRagQuery('');
-    if (activeTab === 'task') setTaskRequest('');
-    if (activeTab === 'meeting') setTranscript('');
-    if (activeTab === 'feedback') setFeedbackBody('');
-    if (activeTab === 'progress') setProgressPrompt('');
+    if (activeTab === "rag") setRagQuery("");
+    if (activeTab === "task") setTaskRequest("");
+    if (activeTab === "meeting") setTranscript("");
+    if (activeTab === "feedback") setFeedbackBody("");
+    if (activeTab === "progress") setProgressPrompt("");
   };
 
   const normalizedSearch = searchTerm.trim().toLowerCase();
   const visibleTabs = normalizedSearch
-    ? tabs.filter((agent) => `${agent.label} ${agent.shortLabel} ${agentDescriptions[agent.id]} ${agentStatuses[agent.id]}`.toLowerCase().includes(normalizedSearch))
+    ? tabs.filter((agent) =>
+        `${agent.label} ${agent.shortLabel} ${agentDescriptions[agent.id]} ${agentStatuses[agent.id]}`
+          .toLowerCase()
+          .includes(normalizedSearch),
+      )
     : tabs;
   const visibleMessages = normalizedSearch
     ? chatMessages.filter((message) => {
-      const messageAgent = tabs.find(tab => tab.id === message.agentId);
-      return `${message.text} ${messageAgent?.label || ''}`.toLowerCase().includes(normalizedSearch);
-    })
+        const messageAgent = tabs.find((tab) => tab.id === message.agentId);
+        return `${message.text} ${messageAgent?.label || ""}`
+          .toLowerCase()
+          .includes(normalizedSearch);
+      })
     : chatMessages;
 
   return (
-    <Layout activePath={`/projects/${projectId}/ai`} projectId={projectId}>
+    <Layout
+      activePath={`/projects/${projectId}/ai`}
+      projectId={projectId}
+      showHeaderActions={false}
+    >
       <WorkbenchErrorBoundary>
-      <div className={clsx('flex', 'min-h-full', 'flex-col', 'bg-[#f8f9fb]')}>
-        <header className={clsx('flex', 'min-h-20', 'flex-col', 'gap-4', 'border-b', 'border-[#c8cde0]', 'bg-white', 'px-5', 'py-4', 'xl:flex-row', 'xl:items-center', 'xl:justify-between')}>
-          <label className={clsx('flex', 'w-full', 'max-w-2xl', 'items-center', 'gap-3', 'rounded-2xl', 'bg-[#f3f4f5]', 'px-4', 'py-3', 'text-[#5f6b7a]', 'focus-within:ring-2', 'focus-within:ring-[#0b47c2]/20')}>
-            <Search className={clsx('h-5', 'w-5', 'shrink-0', 'text-[#1f2937]')} />
-            <input
-              className={clsx('w-full', 'bg-transparent', 'text-sm', 'text-[#191c1d]', 'outline-none', 'placeholder:text-[#5f6b7a]', 'md:text-base')}
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search agents, messages, and knowledge activity..."
-            />
-          </label>
-          <div className={clsx('flex', 'items-center', 'justify-between', 'gap-4', 'xl:justify-end')}>
-            <select
-              value={selectedProvider}
-              onChange={(e) => setSelectedProvider(e.target.value)}
-              className={clsx('h-10', 'rounded-lg', 'border', 'border-[#c3c5d7]', 'bg-white', 'px-3', 'text-sm', 'font-semibold', 'text-[#434654]', 'outline-none', 'focus:border-[#0b47c2]')}
+        <div className={clsx("flex", "min-h-full", "flex-col", "bg-[#f8f9fb]")}>
+          <header
+            className={clsx(
+              "flex",
+              "min-h-20",
+              "flex-col",
+              "gap-4",
+              "border-b",
+              "border-[#c8cde0]",
+              "bg-white",
+              "px-5",
+              "py-4",
+              "xl:flex-row",
+              "xl:items-center",
+              "xl:justify-between",
+            )}
+          >
+            <label
+              className={clsx(
+                "flex",
+                "w-full",
+                "max-w-2xl",
+                "items-center",
+                "gap-3",
+                "rounded-2xl",
+                "bg-[#f3f4f5]",
+                "px-4",
+                "py-3",
+                "text-[#5f6b7a]",
+                "focus-within:ring-2",
+                "focus-within:ring-[#0b47c2]/20",
+              )}
             >
-              <option value="auto">Auto-Orchestrate</option>
-              <option value="ollama">Ollama</option>
-              <option value="groq">Groq</option>
-              <option value="gemini">Gemini</option>
-            </select>
-            <Bot className={clsx('h-5', 'w-5', 'text-[#0b47c2]')} />
-            <Bell className={clsx('h-5', 'w-5', 'text-[#1f2937]')} />
-            <Settings className={clsx('h-5', 'w-5', 'text-[#1f2937]')} />
-            <div className={clsx('flex', 'items-center', 'gap-3')}>
-              <div className={clsx('h-10', 'w-10', 'rounded-full', 'bg-[linear-gradient(135deg,#d4f1ff,#f5c6d6)]')} />
-              <span className={clsx('hidden', 'text-sm', 'font-bold', 'text-[#111827]', 'md:inline')}>{user?.full_name || 'AI Workbench User'}</span>
+              <Search
+                className={clsx("h-5", "w-5", "shrink-0", "text-[#1f2937]")}
+              />
+              <input
+                className={clsx(
+                  "w-full",
+                  "bg-transparent",
+                  "text-sm",
+                  "text-[#191c1d]",
+                  "outline-none",
+                  "placeholder:text-[#5f6b7a]",
+                  "md:text-base",
+                )}
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Search agents, messages, and knowledge activity..."
+              />
+            </label>
+            <div
+              className={clsx(
+                "flex",
+                "items-center",
+                "justify-between",
+                "gap-4",
+                "xl:justify-end",
+              )}
+            >
+              <select
+                value={selectedProvider}
+                onChange={(e) => setSelectedProvider(e.target.value)}
+                className={clsx(
+                  "h-10",
+                  "rounded-lg",
+                  "border",
+                  "border-[#c3c5d7]",
+                  "bg-white",
+                  "px-3",
+                  "text-sm",
+                  "font-semibold",
+                  "text-[#434654]",
+                  "outline-none",
+                  "focus:border-[#0b47c2]",
+                )}
+              >
+                <option value="auto">Auto-Orchestrate</option>
+                <option value="ollama">Ollama</option>
+                <option value="groq">Groq</option>
+                <option value="gemini">Gemini</option>
+              </select>
             </div>
-          </div>
-        </header>
+          </header>
 
-        <div
-          className={clsx(
-            'grid flex-1 overflow-hidden',
-            isAdvisor
-              ? 'xl:grid-cols-[300px_minmax(390px,1fr)_300px] 2xl:grid-cols-[360px_minmax(460px,1fr)_360px]'
-              : 'xl:grid-cols-[320px_minmax(0,1fr)] 2xl:grid-cols-[380px_minmax(0,1fr)]'
-          )}
-        >
-          <aside className={clsx('flex', 'min-h-[360px]', 'flex-col', 'border-b', 'border-[#c8cde0]', 'bg-white', 'xl:border-b-0', 'xl:border-r')}>
-            <div className={clsx('border-b', 'border-[#c8cde0]', 'px-5', 'py-8')}>
-              <h1 className={clsx('text-3xl', 'font-bold', 'tracking-normal', 'text-[#111827]')}>AI Agents</h1>
-              <p className={clsx('mt-2', 'text-sm', 'text-[#191c1d]')}>Manage specialized collaboration agents.</p>
-            </div>
-            <div className={clsx('flex-1', 'space-y-4', 'overflow-y-auto', 'p-5')}>
-              {visibleTabs.map((agent) => {
-                const active = activeTab === agent.id;
-                const status = agentStatuses[agent.id] || 'Idle';
-                return (
-                  <button
-                    key={agent.id}
-                    onClick={() => handleToolSwitch(agent.id)}
+          <div
+            className={clsx(
+              "grid flex-1 overflow-hidden",
+              isAdvisor
+                ? "xl:grid-cols-[300px_minmax(390px,1fr)_300px] 2xl:grid-cols-[360px_minmax(460px,1fr)_360px]"
+                : "xl:grid-cols-[320px_minmax(0,1fr)] 2xl:grid-cols-[380px_minmax(0,1fr)]",
+            )}
+          >
+            <aside
+              className={clsx(
+                "flex",
+                "min-h-[360px]",
+                "flex-col",
+                "border-b",
+                "border-[#c8cde0]",
+                "bg-white",
+                "xl:border-b-0",
+                "xl:border-r",
+              )}
+            >
+              <div
+                className={clsx("border-b", "border-[#c8cde0]", "px-5", "py-8")}
+              >
+                <h1
+                  className={clsx(
+                    "text-3xl",
+                    "font-bold",
+                    "tracking-normal",
+                    "text-[#111827]",
+                  )}
+                >
+                  AI Agents
+                </h1>
+                <p className={clsx("mt-2", "text-sm", "text-[#191c1d]")}>
+                  Manage specialized collaboration agents.
+                </p>
+              </div>
+              <div
+                className={clsx(
+                  "flex-1",
+                  "space-y-4",
+                  "overflow-y-auto",
+                  "p-5",
+                )}
+              >
+                {visibleTabs.map((agent) => {
+                  const active = activeTab === agent.id;
+                  const status = agentStatuses[agent.id] || "Idle";
+                  return (
+                    <button
+                      key={agent.id}
+                      onClick={() => handleToolSwitch(agent.id)}
+                      className={clsx(
+                        "w-full rounded-lg border p-4 text-left transition-colors",
+                        active
+                          ? "border-[#b9c7f8] bg-[#f1f5ff]"
+                          : "border-[#c8cde0] bg-white hover:bg-[#f8f9fb]",
+                      )}
+                    >
+                      <div
+                        className={clsx(
+                          "flex",
+                          "items-start",
+                          "justify-between",
+                          "gap-3",
+                        )}
+                      >
+                        <AgentAvatar agent={agent} />
+                        <span
+                          className={clsx(
+                            "rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide",
+                            statusClass[status],
+                          )}
+                        >
+                          {status}
+                        </span>
+                      </div>
+                      <h2
+                        className={clsx(
+                          "mt-3",
+                          "text-sm",
+                          "font-bold",
+                          "tracking-[0.08em]",
+                          "text-[#001f8f]",
+                        )}
+                      >
+                        {agent.label}
+                      </h2>
+                      <p
+                        className={clsx(
+                          "mt-2",
+                          "line-clamp-2",
+                          "text-sm",
+                          "leading-5",
+                          "text-[#3f4654]",
+                        )}
+                      >
+                        {agentDescriptions[agent.id]}
+                      </p>
+                    </button>
+                  );
+                })}
+                {visibleTabs.length === 0 && (
+                  <div
                     className={clsx(
-                      'w-full rounded-lg border p-4 text-left transition-colors',
-                      active ? 'border-[#b9c7f8] bg-[#f1f5ff]' : 'border-[#c8cde0] bg-white hover:bg-[#f8f9fb]'
+                      "rounded-lg",
+                      "border",
+                      "border-[#c8cde0]",
+                      "bg-[#f8f9fb]",
+                      "p-4",
+                      "text-sm",
+                      "text-[#434654]",
                     )}
                   >
-                    <div className={clsx('flex', 'items-start', 'justify-between', 'gap-3')}>
-                      <AgentAvatar agent={agent} />
-                      <span className={clsx('rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide', statusClass[status])}>{status}</span>
-                    </div>
-                    <h2 className={clsx('mt-3', 'text-sm', 'font-bold', 'tracking-[0.08em]', 'text-[#001f8f]')}>{agent.label}</h2>
-                    <p className={clsx('mt-2', 'line-clamp-2', 'text-sm', 'leading-5', 'text-[#3f4654]')}>{agentDescriptions[agent.id]}</p>
-                  </button>
-                );
-              })}
-              {visibleTabs.length === 0 && (
-                <div className={clsx('rounded-lg', 'border', 'border-[#c8cde0]', 'bg-[#f8f9fb]', 'p-4', 'text-sm', 'text-[#434654]')}>
-                  No agents match the current search.
-                </div>
-              )}
-            </div>
-            <div className={clsx('border-t', 'border-[#c8cde0]', 'p-5')}>
-              <button className={clsx('flex', 'h-12', 'w-full', 'items-center', 'justify-center', 'gap-2', 'rounded', 'border', 'border-[#0b47c2]', 'bg-white', 'text-base', 'font-semibold', 'text-[#0b47c2]', 'hover:bg-[#f1f5ff]')}>
-                <span className={clsx('flex', 'h-6', 'w-6', 'items-center', 'justify-center', 'rounded-full', 'border-2', 'border-[#0b47c2]', 'text-lg', 'leading-none')}>+</span>
-                Add Specialized Agent
-              </button>
-            </div>
-          </aside>
-
-          <main className={clsx('flex', 'min-h-[720px]', 'flex-col', 'overflow-hidden', 'border-b', 'border-[#c8cde0]', 'bg-[#f8f9fb]', 'xl:border-b-0')}>
-            <div className={clsx('flex', 'min-h-[100px]', 'items-center', 'justify-between', 'gap-4', 'border-b', 'border-[#c8cde0]', 'bg-white', 'px-6', 'py-4')}>
-              <div className={clsx('flex', 'items-center', 'gap-4')}>
-                <div>
-                  <p className={clsx('text-xs', 'font-bold', 'uppercase', 'tracking-[0.16em]', 'text-[#303846]')}>Active Agents:</p>
-                  <div className={clsx('mt-2', 'flex', '-space-x-1')}>
-                    {tabs.slice(0, 3).map((agent) => <AgentAvatar key={agent.id} agent={agent} className={clsx('h-8', 'w-8', 'rounded-full', 'ring-2', 'ring-white', '[&>svg]:h-4', '[&>svg]:w-4')} />)}
-                    <span className={clsx('flex', 'h-8', 'w-8', 'items-center', 'justify-center', 'rounded-full', 'bg-[#dfe3e8]', 'ring-2', 'ring-white')}><MoreHorizontal className={clsx('h-4', 'w-4')} /></span>
+                    No agents match the current search.
                   </div>
+                )}
+              </div>
+              <div className={clsx("border-t", "border-[#c8cde0]", "p-5")}>
+                <button
+                  className={clsx(
+                    "flex",
+                    "h-12",
+                    "w-full",
+                    "items-center",
+                    "justify-center",
+                    "gap-2",
+                    "rounded",
+                    "border",
+                    "border-[#0b47c2]",
+                    "bg-white",
+                    "text-base",
+                    "font-semibold",
+                    "text-[#0b47c2]",
+                    "hover:bg-[#f1f5ff]",
+                  )}
+                >
+                  <span
+                    className={clsx(
+                      "flex",
+                      "h-6",
+                      "w-6",
+                      "items-center",
+                      "justify-center",
+                      "rounded-full",
+                      "border-2",
+                      "border-[#0b47c2]",
+                      "text-lg",
+                      "leading-none",
+                    )}
+                  >
+                    +
+                  </span>
+                  Add Specialized Agent
+                </button>
+              </div>
+            </aside>
+
+            <main
+              className={clsx(
+                "flex",
+                "min-h-[720px]",
+                "flex-col",
+                "overflow-hidden",
+                "border-b",
+                "border-[#c8cde0]",
+                "bg-[#f8f9fb]",
+                "xl:border-b-0",
+              )}
+            >
+              <div
+                className={clsx(
+                  "flex",
+                  "min-h-[100px]",
+                  "items-center",
+                  "justify-between",
+                  "gap-4",
+                  "border-b",
+                  "border-[#c8cde0]",
+                  "bg-white",
+                  "px-6",
+                  "py-4",
+                )}
+              >
+                <div className={clsx("flex", "items-center", "gap-4")}>
+                  <div>
+                    <p
+                      className={clsx(
+                        "text-xs",
+                        "font-bold",
+                        "uppercase",
+                        "tracking-[0.16em]",
+                        "text-[#303846]",
+                      )}
+                    >
+                      Active Agents:
+                    </p>
+                    <div className={clsx("mt-2", "flex", "-space-x-1")}>
+                      {tabs.slice(0, 3).map((agent) => (
+                        <AgentAvatar
+                          key={agent.id}
+                          agent={agent}
+                          className={clsx(
+                            "h-8",
+                            "w-8",
+                            "rounded-full",
+                            "ring-2",
+                            "ring-white",
+                            "[&>svg]:h-4",
+                            "[&>svg]:w-4",
+                          )}
+                        />
+                      ))}
+                      <span
+                        className={clsx(
+                          "flex",
+                          "h-8",
+                          "w-8",
+                          "items-center",
+                          "justify-center",
+                          "rounded-full",
+                          "bg-[#dfe3e8]",
+                          "ring-2",
+                          "ring-white",
+                        )}
+                      >
+                        <MoreHorizontal className={clsx("h-4", "w-4")} />
+                      </span>
+                    </div>
+                  </div>
+                  <p
+                    className={clsx(
+                      "hidden",
+                      "max-w-48",
+                      "text-sm",
+                      "italic",
+                      "leading-5",
+                      "text-[#303846]",
+                      "md:block",
+                    )}
+                  >
+                    {activeAgent.label} is summarizing context...
+                  </p>
                 </div>
-                <p className={clsx('hidden', 'max-w-48', 'text-sm', 'italic', 'leading-5', 'text-[#303846]', 'md:block')}>{activeAgent.label} is summarizing context...</p>
-              </div>
-              <button className={secondaryButton} onClick={runActiveAgent} disabled={Boolean(loadingAction)}>
-                <Wand2 className={clsx('h-4', 'w-4', 'text-[#0b47c2]')} />
-                Summon {activeAgent.shortLabel}
-              </button>
-            </div>
-
-            <div className={clsx('flex-1', 'space-y-6', 'overflow-y-auto', 'px-5', 'py-8', 'md:px-10')}>
-              <div className={clsx('mx-auto', 'w-fit', 'rounded-full', 'bg-[#e5e7eb]', 'px-5', 'py-1.5', 'text-sm', 'text-[#303846]')}>
-                Conversation initiated at {new Date(chatMessages[0]?.timestamp || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                <button
+                  className={secondaryButton}
+                  onClick={runActiveAgent}
+                  disabled={Boolean(loadingAction)}
+                >
+                  <Wand2 className={clsx("h-4", "w-4", "text-[#0b47c2]")} />
+                  Summon {activeAgent.shortLabel}
+                </button>
               </div>
 
-              {visibleMessages.map((message) => {
-                const messageAgent = tabs.find(tab => tab.id === message.agentId) || activeAgent;
-                const timeLabel = new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+              <div
+                className={clsx(
+                  "flex-1",
+                  "space-y-6",
+                  "overflow-y-auto",
+                  "px-5",
+                  "py-8",
+                  "md:px-10",
+                )}
+              >
+                <div
+                  className={clsx(
+                    "mx-auto",
+                    "w-fit",
+                    "rounded-full",
+                    "bg-[#e5e7eb]",
+                    "px-5",
+                    "py-1.5",
+                    "text-sm",
+                    "text-[#303846]",
+                  )}
+                >
+                  Conversation initiated at{" "}
+                  {new Date(
+                    chatMessages[0]?.timestamp || Date.now(),
+                  ).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </div>
 
-                if (message.sender === 'user') {
-                  return (
-                    <div key={message.id} className={clsx('flex', 'justify-end', 'gap-3')}>
-                      <div className="max-w-[520px]">
-                        <div className={clsx('mb-2', 'flex', 'items-center', 'justify-end', 'gap-2', 'text-sm')}>
-                          <span className={clsx('font-bold', 'text-[#111827]')}>{user?.full_name || 'User'}</span>
-                          <span className="text-[#303846]">{timeLabel}</span>
+                {visibleMessages.map((message) => {
+                  const messageAgent =
+                    tabs.find((tab) => tab.id === message.agentId) ||
+                    activeAgent;
+                  const timeLabel = new Date(
+                    message.timestamp,
+                  ).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  });
+
+                  if (message.sender === "user") {
+                    return (
+                      <div
+                        key={message.id}
+                        className={clsx("flex", "justify-end", "gap-3")}
+                      >
+                        <div className="max-w-[520px]">
+                          <div
+                            className={clsx(
+                              "mb-2",
+                              "flex",
+                              "items-center",
+                              "justify-end",
+                              "gap-2",
+                              "text-sm",
+                            )}
+                          >
+                            <span
+                              className={clsx("font-bold", "text-[#111827]")}
+                            >
+                              {user?.full_name || "User"}
+                            </span>
+                            <span className="text-[#303846]">{timeLabel}</span>
+                          </div>
+                          <div
+                            className={clsx(
+                              "rounded-[20px]",
+                              "rounded-tr-sm",
+                              "bg-[#1f5de8]",
+                              "px-5",
+                              "py-4",
+                              "text-base",
+                              "leading-7",
+                              "text-white",
+                              "shadow-sm",
+                              "2xl:text-lg",
+                              "2xl:leading-8",
+                            )}
+                          >
+                            {message.text}
+                          </div>
                         </div>
-                        <div className={clsx('rounded-[20px]', 'rounded-tr-sm', 'bg-[#1f5de8]', 'px-5', 'py-4', 'text-base', 'leading-7', 'text-white', 'shadow-sm', '2xl:text-lg', '2xl:leading-8')}>
-                          {message.text}
+                        <div
+                          className={clsx(
+                            "mt-8",
+                            "flex",
+                            "h-12",
+                            "w-12",
+                            "shrink-0",
+                            "items-center",
+                            "justify-center",
+                            "rounded-full",
+                            "bg-[#0b47c2]",
+                            "text-sm",
+                            "font-bold",
+                            "text-white",
+                          )}
+                        >
+                          {user?.full_name?.charAt(0)?.toUpperCase() || "U"}
                         </div>
                       </div>
-                      <div className={clsx('mt-8', 'flex', 'h-12', 'w-12', 'shrink-0', 'items-center', 'justify-center', 'rounded-full', 'bg-[#0b47c2]', 'text-sm', 'font-bold', 'text-white')}>
-                        {user?.full_name?.charAt(0)?.toUpperCase() || 'U'}
+                    );
+                  }
+
+                  return (
+                    <div key={message.id} className={clsx("flex", "gap-4")}>
+                      <AgentAvatar agent={messageAgent} className="mt-8" />
+                      <div className={clsx("max-w-[560px]", "flex-1")}>
+                        <div
+                          className={clsx(
+                            "mb-2",
+                            "flex",
+                            "items-center",
+                            "gap-2",
+                            "text-sm",
+                          )}
+                        >
+                          <span className={clsx("font-bold", "text-[#001f8f]")}>
+                            {messageAgent.label}
+                          </span>
+                          <span className="text-[#303846]">{timeLabel}</span>
+                        </div>
+                        <div
+                          className={clsx(
+                            "border-l-4",
+                            "border-[#1f5de8]",
+                            "bg-white",
+                            "p-5",
+                            "text-sm",
+                            "leading-6",
+                            "shadow-sm",
+                            "ring-1",
+                            "ring-[#1f5de8]",
+                            "2xl:text-base",
+                            "2xl:leading-7",
+                          )}
+                        >
+                          <StreamingMessage
+                            text={message.text}
+                            stream={!!message.stream}
+                          />
+                          <div
+                            className={clsx(
+                              "mt-4",
+                              "rounded",
+                              "bg-[#f1f5ff]",
+                              "p-4",
+                              "text-sm",
+                            )}
+                          >
+                            <p
+                              className={clsx(
+                                "font-bold",
+                                "uppercase",
+                                "text-[#003fb1]",
+                              )}
+                            >
+                              Proposed Action
+                            </p>
+                            <p className={clsx("mt-1", "italic")}>
+                              "
+                              {activeTab === "rag"
+                                ? "Search indexed documents for supporting evidence."
+                                : activeTab === "task"
+                                  ? "Convert this request into a structured project task."
+                                  : activeTab === "meeting"
+                                    ? "Summarize coordination notes and extract action items."
+                                    : activeTab === "feedback"
+                                      ? "Analyze advisor feedback and draft a response."
+                                      : "Generate an advisor-ready weekly progress report."}
+                              "
+                            </p>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   );
-                }
-
-                return (
-                  <div key={message.id} className={clsx('flex', 'gap-4')}>
-                    <AgentAvatar agent={messageAgent} className="mt-8" />
-                    <div className={clsx('max-w-[560px]', 'flex-1')}>
-                      <div className={clsx('mb-2', 'flex', 'items-center', 'gap-2', 'text-sm')}>
-                        <span className={clsx('font-bold', 'text-[#001f8f]')}>{messageAgent.label}</span>
-                        <span className="text-[#303846]">{timeLabel}</span>
-                      </div>
-                      <div className={clsx('border-l-4', 'border-[#1f5de8]', 'bg-white', 'p-5', 'text-sm', 'leading-6', 'shadow-sm', 'ring-1', 'ring-[#1f5de8]', '2xl:text-base', '2xl:leading-7')}>
-                        <StreamingMessage text={message.text} stream={!!message.stream} />
-                        <div className={clsx('mt-4', 'rounded', 'bg-[#f1f5ff]', 'p-4', 'text-sm')}>
-                          <p className={clsx('font-bold', 'uppercase', 'text-[#003fb1]')}>Proposed Action</p>
-                          <p className={clsx('mt-1', 'italic')}>"{activeTab === 'rag' ? 'Search indexed documents for supporting evidence.' : activeTab === 'task' ? 'Convert this request into a structured project task.' : activeTab === 'meeting' ? 'Summarize coordination notes and extract action items.' : activeTab === 'feedback' ? 'Analyze advisor feedback and draft a response.' : 'Generate an advisor-ready weekly progress report.'}"</p>
-                        </div>
-                      </div>
-                    </div>
+                })}
+                {visibleMessages.length === 0 && (
+                  <div
+                    className={clsx(
+                      "mx-auto",
+                      "max-w-lg",
+                      "rounded-lg",
+                      "border",
+                      "border-[#c8cde0]",
+                      "bg-white",
+                      "p-5",
+                      "text-center",
+                      "text-sm",
+                      "text-[#434654]",
+                    )}
+                  >
+                    No conversation messages match the current search.
                   </div>
-                );
-              })}
-              {visibleMessages.length === 0 && (
-                <div className={clsx('mx-auto', 'max-w-lg', 'rounded-lg', 'border', 'border-[#c8cde0]', 'bg-white', 'p-5', 'text-center', 'text-sm', 'text-[#434654]')}>
-                  No conversation messages match the current search.
-                </div>
-              )}
+                )}
 
-              {renderWorkflow()}
-            </div>
-
-            <div className={clsx('border-t', 'border-[#c8cde0]', 'bg-white', 'px-5', 'py-5')}>
-              <div className={clsx('mb-5', 'grid', 'gap-3', 'md:grid-cols-3')}>
-                <button className={secondaryButton} onClick={() => handleToolSwitch('meeting')}>
-                  <FileText className={clsx('h-4', 'w-4')} />
-                  Summarize Thread
-                </button>
-                <button className={secondaryButton} onClick={() => handleToolSwitch('task')}>
-                  <ClipboardList className={clsx('h-4', 'w-4')} />
-                  Generate Task
-                </button>
-                <button className={secondaryButton} onClick={() => handleToolSwitch('rag')}>
-                  <Search className={clsx('h-4', 'w-4')} />
-                  Search Knowledge Base
-                </button>
+                {renderWorkflow()}
               </div>
 
-              <div className={clsx('rounded-2xl', 'bg-white', 'p-4', 'shadow-xl', 'shadow-slate-200', 'ring-1', 'ring-[#eef1f6]')}>
-                <textarea
-                  className={clsx('min-h-28', 'w-full', 'resize-y', 'rounded-xl', 'border-0', 'px-2', 'py-2', 'text-base', 'text-[#191c1d]', 'outline-none', 'placeholder:text-[#6b7280]')}
-                  value={composerValue}
-                  onChange={(e) => updateComposer(e.target.value)}
-                  placeholder="Type a message or '@' to tag an agent..."
-                />
-                <div className={clsx('flex', 'flex-wrap', 'items-center', 'justify-between', 'gap-3', 'pt-2')}>
-                  <div className={clsx('flex', 'items-center', 'gap-4', 'text-[#1f2937]')}>
-                    <Paperclip className={clsx('h-5', 'w-5')} />
-                    <Mic className={clsx('h-5', 'w-5')} />
-                    <Image className={clsx('h-5', 'w-5')} />
-                    <span className={clsx('h-6', 'w-px', 'bg-[#c8cde0]')} />
-                    <span className={clsx('inline-flex', 'items-center', 'gap-1', 'text-sm', 'font-semibold')}>
-                      <AtSign className={clsx('h-4', 'w-4')} />
-                      Agents
+              <div
+                className={clsx(
+                  "border-t",
+                  "border-[#c8cde0]",
+                  "bg-white",
+                  "px-5",
+                  "py-5",
+                )}
+              >
+                <div
+                  className={clsx("mb-5", "grid", "gap-3", "md:grid-cols-3")}
+                >
+                  <button
+                    className={secondaryButton}
+                    onClick={() => handleToolSwitch("meeting")}
+                  >
+                    <FileText className={clsx("h-4", "w-4")} />
+                    Summarize Thread
+                  </button>
+                  <button
+                    className={secondaryButton}
+                    onClick={() => handleToolSwitch("task")}
+                  >
+                    <ClipboardList className={clsx("h-4", "w-4")} />
+                    Generate Task
+                  </button>
+                  <button
+                    className={secondaryButton}
+                    onClick={() => handleToolSwitch("rag")}
+                  >
+                    <Search className={clsx("h-4", "w-4")} />
+                    Search Knowledge Base
+                  </button>
+                </div>
+
+                <div
+                  className={clsx(
+                    "rounded-2xl",
+                    "bg-white",
+                    "p-4",
+                    "shadow-xl",
+                    "shadow-slate-200",
+                    "ring-1",
+                    "ring-[#eef1f6]",
+                  )}
+                >
+                  <textarea
+                    className={clsx(
+                      "min-h-28",
+                      "w-full",
+                      "resize-y",
+                      "rounded-xl",
+                      "border-0",
+                      "px-2",
+                      "py-2",
+                      "text-base",
+                      "text-[#191c1d]",
+                      "outline-none",
+                      "placeholder:text-[#6b7280]",
+                    )}
+                    value={composerValue}
+                    onChange={(e) => updateComposer(e.target.value)}
+                    placeholder="Type a message or '@' to tag an agent..."
+                  />
+                  <div
+                    className={clsx(
+                      "flex",
+                      "flex-wrap",
+                      "items-center",
+                      "justify-between",
+                      "gap-3",
+                      "pt-2",
+                    )}
+                  >
+                    <div
+                      className={clsx(
+                        "flex",
+                        "items-center",
+                        "gap-4",
+                        "text-[#1f2937]",
+                      )}
+                    >
+                      <Paperclip className={clsx("h-5", "w-5")} />
+                      <Mic className={clsx("h-5", "w-5")} />
+                      <Image className={clsx("h-5", "w-5")} />
+                      <span className={clsx("h-6", "w-px", "bg-[#c8cde0]")} />
+                      <span
+                        className={clsx(
+                          "inline-flex",
+                          "items-center",
+                          "gap-1",
+                          "text-sm",
+                          "font-semibold",
+                        )}
+                      >
+                        <AtSign className={clsx("h-4", "w-4")} />
+                        Agents
+                      </span>
+                    </div>
+                    <button
+                      className={primaryButton}
+                      disabled={Boolean(loadingAction)}
+                      onClick={runActiveAgent}
+                    >
+                      Send
+                      <Send className={clsx("h-4", "w-4")} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </main>
+
+            {isAdvisor && (
+              <aside
+                className={clsx(
+                  "flex",
+                  "min-h-[720px]",
+                  "flex-col",
+                  "bg-white",
+                )}
+              >
+                <div className={clsx("border-b", "border-[#c8cde0]", "p-6")}>
+                  <div
+                    className={clsx(
+                      "mb-5",
+                      "flex",
+                      "items-center",
+                      "justify-between",
+                    )}
+                  >
+                    <h2
+                      className={clsx(
+                        "text-sm",
+                        "font-bold",
+                        "uppercase",
+                        "tracking-[0.12em]",
+                        "text-[#111827]",
+                      )}
+                    >
+                      Advisor View
+                    </h2>
+                    <Sparkles
+                      className={clsx("h-5", "w-5", "text-[#0b47c2]")}
+                    />
+                  </div>
+                  <div
+                    className={clsx("mb-5", "flex", "items-center", "gap-3")}
+                  >
+                    <div
+                      className={clsx(
+                        "h-2",
+                        "flex-1",
+                        "rounded-full",
+                        "bg-[#d8dde5]",
+                      )}
+                    >
+                      <div
+                        className={clsx(
+                          "h-full",
+                          "w-[65%]",
+                          "rounded-full",
+                          "bg-[#1f5de8]",
+                        )}
+                      />
+                    </div>
+                    <span
+                      className={clsx("text-sm", "font-bold", "text-[#111827]")}
+                    >
+                      65%
                     </span>
                   </div>
-                  <button className={primaryButton} disabled={Boolean(loadingAction)} onClick={runActiveAgent}>
-                    Send
-                    <Send className={clsx('h-4', 'w-4')} />
+                  <p
+                    className={clsx(
+                      "text-sm",
+                      "italic",
+                      "leading-5",
+                      "text-[#303846]",
+                    )}
+                  >
+                    AI-generated status based on current workbench messages.
+                  </p>
+                </div>
+
+                <div
+                  className={clsx(
+                    "flex-1",
+                    "space-y-7",
+                    "overflow-y-auto",
+                    "p-6",
+                  )}
+                >
+                  <section>
+                    <div
+                      className={clsx("mb-3", "flex", "items-center", "gap-3")}
+                    >
+                      <CheckCircle2
+                        className={clsx("h-6", "w-6", "text-[#005438]")}
+                      />
+                      <h3
+                        className={clsx(
+                          "text-sm",
+                          "font-bold",
+                          "tracking-[0.08em]",
+                          "text-[#111827]",
+                        )}
+                      >
+                        Key Achievements
+                      </h3>
+                    </div>
+                    <ul
+                      className={clsx(
+                        "space-y-3",
+                        "text-sm",
+                        "leading-6",
+                        "text-[#191c1d]",
+                      )}
+                    >
+                      <li className={clsx("flex", "gap-3")}>
+                        <span
+                          className={clsx(
+                            "mt-2",
+                            "h-1.5",
+                            "w-1.5",
+                            "rounded-full",
+                            "bg-[#007a53]",
+                          )}
+                        />
+                        Workflow agents connected to existing AI endpoints.
+                      </li>
+                      <li className={clsx("flex", "gap-3")}>
+                        <span
+                          className={clsx(
+                            "mt-2",
+                            "h-1.5",
+                            "w-1.5",
+                            "rounded-full",
+                            "bg-[#007a53]",
+                          )}
+                        />
+                        Knowledge search, task generation, and feedback analysis
+                        remain available.
+                      </li>
+                    </ul>
+                  </section>
+
+                  <section>
+                    <div
+                      className={clsx("mb-3", "flex", "items-center", "gap-3")}
+                    >
+                      <AlertTriangle
+                        className={clsx("h-6", "w-6", "text-[#d11c1c]")}
+                      />
+                      <h3
+                        className={clsx(
+                          "text-sm",
+                          "font-bold",
+                          "tracking-[0.08em]",
+                          "text-[#111827]",
+                        )}
+                      >
+                        Potential Blockers
+                      </h3>
+                    </div>
+                    <div
+                      className={clsx(
+                        "rounded-lg",
+                        "border",
+                        "border-[#ffd1ce]",
+                        "bg-[#fff0ee]",
+                        "p-4",
+                      )}
+                    >
+                      <h4 className={clsx("font-bold", "text-[#a40000]")}>
+                        Cluster Capacity Alert
+                      </h4>
+                      <p
+                        className={clsx(
+                          "mt-2",
+                          "text-sm",
+                          "leading-5",
+                          "text-[#b42318]",
+                        )}
+                      >
+                        Proposed simulation requires 15% more TFLOPs than
+                        currently allocated to Dr. Thorne.
+                      </p>
+                    </div>
+                  </section>
+
+                  <section>
+                    <h3
+                      className={clsx(
+                        "mb-3",
+                        "text-sm",
+                        "font-bold",
+                        "tracking-[0.08em]",
+                        "text-[#111827]",
+                      )}
+                    >
+                      AI Recommendations
+                    </h3>
+                    <div className="space-y-3">
+                      <button
+                        className={clsx(
+                          "w-full",
+                          "rounded-lg",
+                          "border",
+                          "border-[#c8cde0]",
+                          "bg-white",
+                          "p-4",
+                          "text-left",
+                          "hover:bg-[#f8f9fb]",
+                        )}
+                        onClick={generateProgressReport}
+                      >
+                        <span
+                          className={clsx(
+                            "block",
+                            "font-bold",
+                            "text-[#111827]",
+                          )}
+                        >
+                          Generate Weekly Report
+                        </span>
+                        <span
+                          className={clsx(
+                            "mt-1",
+                            "block",
+                            "text-sm",
+                            "text-[#303846]",
+                          )}
+                        >
+                          Create an advisor-ready project summary.
+                        </span>
+                      </button>
+                      <button
+                        className={clsx(
+                          "w-full",
+                          "rounded-lg",
+                          "border",
+                          "border-[#c8cde0]",
+                          "bg-white",
+                          "p-4",
+                          "text-left",
+                          "hover:bg-[#f8f9fb]",
+                        )}
+                        onClick={() => handleToolSwitch("feedback")}
+                      >
+                        <span
+                          className={clsx(
+                            "block",
+                            "font-bold",
+                            "text-[#111827]",
+                          )}
+                        >
+                          Schedule Peer Review
+                        </span>
+                        <span
+                          className={clsx(
+                            "mt-1",
+                            "block",
+                            "text-sm",
+                            "text-[#303846]",
+                          )}
+                        >
+                          Engage Feedback Agent for validation.
+                        </span>
+                      </button>
+                    </div>
+                  </section>
+                </div>
+
+                <div className={clsx("border-t", "border-[#c8cde0]", "p-6")}>
+                  {progressReport && (
+                    <button
+                      className={clsx(secondaryButton, "mb-3 w-full")}
+                      onClick={() => setIsEditingReport(!isEditingReport)}
+                    >
+                      {isEditingReport ? "View Preview" : "Edit Report"}
+                    </button>
+                  )}
+                  <button
+                    className={clsx(
+                      "h-12",
+                      "w-full",
+                      "rounded",
+                      "bg-[#5f6b7a]",
+                      "text-base",
+                      "font-semibold",
+                      "text-white",
+                      "hover:bg-[#4b5563]",
+                    )}
+                    onClick={generateProgressReport}
+                    disabled={loadingAction === "progress"}
+                  >
+                    Export Weekly Report
                   </button>
                 </div>
-              </div>
-            </div>
-          </main>
-
-          {isAdvisor && (
-          <aside className={clsx('flex', 'min-h-[720px]', 'flex-col', 'bg-white')}>
-            <div className={clsx('border-b', 'border-[#c8cde0]', 'p-6')}>
-              <div className={clsx('mb-5', 'flex', 'items-center', 'justify-between')}>
-                <h2 className={clsx('text-sm', 'font-bold', 'uppercase', 'tracking-[0.12em]', 'text-[#111827]')}>Advisor View</h2>
-                <Sparkles className={clsx('h-5', 'w-5', 'text-[#0b47c2]')} />
-              </div>
-              <div className={clsx('mb-5', 'flex', 'items-center', 'gap-3')}>
-                <div className={clsx('h-2', 'flex-1', 'rounded-full', 'bg-[#d8dde5]')}>
-                  <div className={clsx('h-full', 'w-[65%]', 'rounded-full', 'bg-[#1f5de8]')} />
-                </div>
-                <span className={clsx('text-sm', 'font-bold', 'text-[#111827]')}>65%</span>
-              </div>
-              <p className={clsx('text-sm', 'italic', 'leading-5', 'text-[#303846]')}>AI-generated status based on current workbench messages.</p>
-            </div>
-
-            <div className={clsx('flex-1', 'space-y-7', 'overflow-y-auto', 'p-6')}>
-              <section>
-                <div className={clsx('mb-3', 'flex', 'items-center', 'gap-3')}>
-                  <CheckCircle2 className={clsx('h-6', 'w-6', 'text-[#005438]')} />
-                  <h3 className={clsx('text-sm', 'font-bold', 'tracking-[0.08em]', 'text-[#111827]')}>Key Achievements</h3>
-                </div>
-                <ul className={clsx('space-y-3', 'text-sm', 'leading-6', 'text-[#191c1d]')}>
-                  <li className={clsx('flex', 'gap-3')}><span className={clsx('mt-2', 'h-1.5', 'w-1.5', 'rounded-full', 'bg-[#007a53]')} />Workflow agents connected to existing AI endpoints.</li>
-                  <li className={clsx('flex', 'gap-3')}><span className={clsx('mt-2', 'h-1.5', 'w-1.5', 'rounded-full', 'bg-[#007a53]')} />Knowledge search, task generation, and feedback analysis remain available.</li>
-                </ul>
-              </section>
-
-              <section>
-                <div className={clsx('mb-3', 'flex', 'items-center', 'gap-3')}>
-                  <AlertTriangle className={clsx('h-6', 'w-6', 'text-[#d11c1c]')} />
-                  <h3 className={clsx('text-sm', 'font-bold', 'tracking-[0.08em]', 'text-[#111827]')}>Potential Blockers</h3>
-                </div>
-                <div className={clsx('rounded-lg', 'border', 'border-[#ffd1ce]', 'bg-[#fff0ee]', 'p-4')}>
-                  <h4 className={clsx('font-bold', 'text-[#a40000]')}>Cluster Capacity Alert</h4>
-                  <p className={clsx('mt-2', 'text-sm', 'leading-5', 'text-[#b42318]')}>Proposed simulation requires 15% more TFLOPs than currently allocated to Dr. Thorne.</p>
-                </div>
-              </section>
-
-              <section>
-                <h3 className={clsx('mb-3', 'text-sm', 'font-bold', 'tracking-[0.08em]', 'text-[#111827]')}>AI Recommendations</h3>
-                <div className="space-y-3">
-                  <button className={clsx('w-full', 'rounded-lg', 'border', 'border-[#c8cde0]', 'bg-white', 'p-4', 'text-left', 'hover:bg-[#f8f9fb]')} onClick={generateProgressReport}>
-                    <span className={clsx('block', 'font-bold', 'text-[#111827]')}>Generate Weekly Report</span>
-                    <span className={clsx('mt-1', 'block', 'text-sm', 'text-[#303846]')}>Create an advisor-ready project summary.</span>
-                  </button>
-                  <button className={clsx('w-full', 'rounded-lg', 'border', 'border-[#c8cde0]', 'bg-white', 'p-4', 'text-left', 'hover:bg-[#f8f9fb]')} onClick={() => handleToolSwitch('feedback')}>
-                    <span className={clsx('block', 'font-bold', 'text-[#111827]')}>Schedule Peer Review</span>
-                    <span className={clsx('mt-1', 'block', 'text-sm', 'text-[#303846]')}>Engage Feedback Agent for validation.</span>
-                  </button>
-                </div>
-              </section>
-            </div>
-
-            <div className={clsx('border-t', 'border-[#c8cde0]', 'p-6')}>
-              {progressReport && (
-                <button className={clsx(secondaryButton, 'mb-3 w-full')} onClick={() => setIsEditingReport(!isEditingReport)}>
-                  {isEditingReport ? 'View Preview' : 'Edit Report'}
-                </button>
-              )}
-              <button className={clsx('h-12', 'w-full', 'rounded', 'bg-[#5f6b7a]', 'text-base', 'font-semibold', 'text-white', 'hover:bg-[#4b5563]')} onClick={generateProgressReport} disabled={loadingAction === 'progress'}>
-                Export Weekly Report
-              </button>
-            </div>
-          </aside>
-          )}
+              </aside>
+            )}
+          </div>
         </div>
-      </div>
       </WorkbenchErrorBoundary>
     </Layout>
   );

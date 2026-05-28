@@ -5,6 +5,7 @@ const { authenticate } = require('../../middleware/auth');
 const agentGate = require('../../middleware/agentGate');
 const eventBroker = require('../../services/eventBroker');
 const generationService = require('../../services/generationService');
+const { recordProjectEvent } = require('../../services/notificationService');
 
 // POST /api/agents/feedback/submit - Submit feedback and generate suggested responses
 router.post('/submit', authenticate, async (req, res) => {
@@ -53,6 +54,26 @@ Format strictly as JSON.`;
       projectId,
       advisorId: req.user.id,
       severity: newFeedback.severity
+    });
+
+    await recordProjectEvent({
+      projectId,
+      actorId: req.user.id,
+      eventType: 'feedback.submitted',
+      entityType: 'feedback',
+      entityId: null,
+      metadata: {
+        feedbackId: newFeedback.id,
+        severity: newFeedback.severity,
+        category: newFeedback.category,
+      },
+      notification: {
+        type: 'feedback.submitted',
+        category: 'updates',
+        title: 'New advisor feedback',
+        body: structuredSummary || body.slice(0, 180),
+        link: `/projects/${projectId}/ai`,
+      },
     });
 
     res.status(201).json({

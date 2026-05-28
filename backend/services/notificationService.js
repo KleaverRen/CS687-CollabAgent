@@ -16,6 +16,17 @@ function normalizeMetadata(metadata) {
     : {};
 }
 
+function serializeNotification(row) {
+  if (!row) return null;
+  return {
+    ...row,
+    link: row.link || row.action_url || null,
+    action_url: row.action_url || row.link || null,
+    is_read: Boolean(row.is_read || row.read_at),
+    read_at: row.read_at || (row.is_read ? row.updated_at || row.created_at : null),
+  };
+}
+
 async function getProjectMemberIds(projectId, client = pool) {
   const result = await client.query(
     `SELECT user_id FROM project_members WHERE project_id = $1`,
@@ -80,15 +91,17 @@ async function createNotification(
     entityType = null,
     entityId = null,
     actionUrl = null,
+    link = null,
     metadata = {},
   },
   client = pool,
 ) {
+  const finalLink = link || actionUrl || null;
   const result = await client.query(
     `INSERT INTO notifications
       (user_id, actor_id, project_id, activity_id, type, category, title, body,
-       entity_type, entity_id, action_url, metadata)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+       entity_type, entity_id, action_url, link, metadata)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
      RETURNING *`,
     [
       userId,
@@ -101,11 +114,12 @@ async function createNotification(
       body,
       entityType,
       entityId,
-      actionUrl,
+      finalLink,
+      finalLink,
       normalizeMetadata(metadata),
     ],
   );
-  const notification = result.rows[0];
+  const notification = serializeNotification(result.rows[0]);
   await publishNotification(notification);
   return notification;
 }
@@ -185,7 +199,7 @@ async function listNotifications(userId, { limit, before, unreadOnly } = {}) {
   }
 
   if (unreadOnly) {
-    where += " AND n.read_at IS NULL";
+    where += " AND n.is_read = FALSE";
   }
 
   params.push(clampLimit(limit));
@@ -199,12 +213,12 @@ async function listNotifications(userId, { limit, before, unreadOnly } = {}) {
      LIMIT $${params.length}`,
     params,
   );
-  return result.rows;
+  return result.rows.map(serializeNotification);
 }
 
 async function getUnreadCount(userId) {
   const result = await pool.query(
-    `SELECT COUNT(*)::int AS count FROM notifications WHERE user_id = $1 AND read_at IS NULL`,
+    `SELECT COUNT(*)::int AS count FROM notifications WHERE user_id = $1 AND is_read = FALSE`,
     [userId],
   );
   return result.rows[0]?.count || 0;
@@ -213,19 +227,19 @@ async function getUnreadCount(userId) {
 async function markNotificationRead(userId, notificationId) {
   const result = await pool.query(
     `UPDATE notifications
-     SET read_at = COALESCE(read_at, NOW())
+     SET is_read = TRUE, read_at = COALESCE(read_at, NOW())
      WHERE id = $1 AND user_id = $2
      RETURNING *`,
     [notificationId, userId],
   );
-  return result.rows[0] || null;
+  return serializeNotification(result.rows[0]);
 }
 
 async function markAllNotificationsRead(userId) {
   const result = await pool.query(
     `UPDATE notifications
-     SET read_at = COALESCE(read_at, NOW())
-     WHERE user_id = $1 AND read_at IS NULL
+     SET is_read = TRUE, read_at = COALESCE(read_at, NOW())
+     WHERE user_id = $1 AND is_read = FALSE
      RETURNING id`,
     [userId],
   );
@@ -268,6 +282,7 @@ module.exports = {
   clampLimit,
   createActivity,
   createNotification,
+  serializeNotification,
   getProjectMemberIds,
   getUnreadCount,
   listActivity,

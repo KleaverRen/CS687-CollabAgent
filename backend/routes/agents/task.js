@@ -5,6 +5,7 @@ const { authenticate } = require("../../middleware/auth");
 const agentGate = require("../../middleware/agentGate");
 const eventBroker = require("../../services/eventBroker");
 const generationService = require("../../services/generationService");
+const { recordProjectEvent } = require("../../services/notificationService");
 
 function normalizePriority(priority) {
   const normalized = String(priority || "medium").toLowerCase();
@@ -478,6 +479,29 @@ router.post("/confirm", authenticate, agentGate, async (req, res) => {
       assignedTo: newTask.assigned_to,
     });
 
+    await recordProjectEvent({
+      projectId,
+      actorId: req.user.id,
+      eventType: "task.assigned",
+      entityType: "task",
+      entityId: newTask.id,
+      metadata: {
+        title: newTask.title,
+        priority: newTask.priority,
+        assignedTo: newTask.assigned_to,
+      },
+      notification: newTask.assigned_to
+        ? {
+            recipientIds: [newTask.assigned_to],
+            type: "task.assigned",
+            category: "mentions",
+            title: `Task assigned: ${newTask.title}`,
+            body: `${req.user.full_name} assigned you a ${newTask.priority} priority task.`,
+            link: `/projects/${projectId}/tasks`,
+          }
+        : null,
+    });
+
     res.status(201).json({ task: full.rows[0] });
   } catch (err) {
     console.error("[TaskAgent] Confirm error:", err);
@@ -666,6 +690,29 @@ router.post(
         title: result.rows[0].title,
         assignedTo: result.rows[0].assigned_to,
         deadline: result.rows[0].deadline,
+      });
+
+      await recordProjectEvent({
+        projectId,
+        actorId: req.user.id,
+        eventType: "task.updated",
+        entityType: "task",
+        entityId: updateDraft.taskId,
+        metadata: {
+          title: result.rows[0].title,
+          assignedTo: result.rows[0].assigned_to,
+          deadline: result.rows[0].deadline,
+        },
+        notification: result.rows[0].assigned_to
+          ? {
+              recipientIds: [result.rows[0].assigned_to],
+              type: "task.assigned",
+              category: "mentions",
+              title: `Task assigned: ${result.rows[0].title}`,
+              body: `${req.user.full_name} updated your task assignment.`,
+              link: `/projects/${projectId}/tasks`,
+            }
+          : null,
       });
 
       res.json({ task: full.rows[0] });

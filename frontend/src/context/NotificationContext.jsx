@@ -82,15 +82,15 @@ export function NotificationProvider({ children }) {
   const markRead = useCallback(async (id) => {
     const { data } = await api.patch(`/notifications/${id}/read`);
     setNotifications((current) => current.map((item) => (
-      item.id === id ? { ...item, read_at: data.notification.read_at } : item
+      item.id === id ? { ...item, is_read: true, read_at: data.notification.read_at } : item
     )));
     setUnreadCount(data.unreadCount || 0);
   }, []);
 
   const markAllRead = useCallback(async () => {
-    const { data } = await api.patch('/notifications/read-all', { confirm: true });
+    const { data } = await api.post('/notifications/read-all', { confirm: true });
     const readAt = new Date().toISOString();
-    setNotifications((current) => current.map((item) => ({ ...item, read_at: item.read_at || readAt })));
+    setNotifications((current) => current.map((item) => ({ ...item, is_read: true, read_at: item.read_at || readAt })));
     setUnreadCount(data.unreadCount || 0);
   }, []);
 

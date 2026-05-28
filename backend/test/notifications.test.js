@@ -73,7 +73,7 @@ test("listNotifications scopes results to one user and unread filter", async () 
   assert.equal(calls[0].params[0], "user-1");
   assert.equal(calls[0].params.at(-1), 5);
   assert.match(calls[0].sql, /n\.user_id = \$1/);
-  assert.match(calls[0].sql, /n\.read_at IS NULL/);
+  assert.match(calls[0].sql, /n\.is_read = FALSE/);
 });
 
 test("markAllNotificationsRead only mutates unread rows for the authenticated user", async () => {
@@ -90,5 +90,5 @@ test("markAllNotificationsRead only mutates unread rows for the authenticated us
 
   assert.equal(count, 3);
   assert.deepEqual(calls[0].params, ["user-2"]);
-  assert.match(calls[0].sql, /WHERE user_id = \$1 AND read_at IS NULL/);
+  assert.match(calls[0].sql, /WHERE user_id = \$1 AND is_read = FALSE/);
 });
