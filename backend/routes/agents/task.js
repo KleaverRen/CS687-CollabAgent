@@ -563,11 +563,9 @@ If the user did not request an assignee or deadline, use null for that field.`;
       findImplicitTaskMatch(todoTasks, request, req.user);
 
     if (!task) {
-      return res
-        .status(404)
-        .json({
-          error: "Could not match the request to an existing todo task.",
-        });
+      return res.status(404).json({
+        error: "Could not match the request to an existing todo task.",
+      });
     }
 
     const assigneeName = parsed?.assignee_name || fallbackDraft.assignee_name;
@@ -582,11 +580,9 @@ If the user did not request an assignee or deadline, use null for that field.`;
         .json({ error: `Could not find project member "${assigneeName}".` });
     }
     if (!assignedTo && !deadline) {
-      return res
-        .status(400)
-        .json({
-          error: "No assignee or deadline change was found in the request.",
-        });
+      return res.status(400).json({
+        error: "No assignee or deadline change was found in the request.",
+      });
     }
 
     const assigneeDisplay = assignedTo
@@ -706,7 +702,7 @@ router.post(
         notification: result.rows[0].assigned_to
           ? {
               recipientIds: [result.rows[0].assigned_to],
-              type: "task.assigned",
+              type: "task.updated",
               category: "mentions",
               title: `Task assigned: ${result.rows[0].title}`,
               body: `${req.user.full_name} updated your task assignment.`,

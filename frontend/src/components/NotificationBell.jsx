@@ -118,7 +118,7 @@ export default function NotificationBell({
               </div>
             ) : (
               notifications.map((notification) => {
-                const unread = !notification.read_at;
+                const unread = !notification.is_read;
                 const safeContent = (
                   <div
                     className={clsx(

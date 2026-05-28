@@ -23,7 +23,7 @@ function serializeNotification(row) {
     link: row.link || row.action_url || null,
     action_url: row.action_url || row.link || null,
     is_read: Boolean(row.is_read || row.read_at),
-    read_at: row.read_at || (row.is_read ? row.updated_at || row.created_at : null),
+    read_at: row.read_at || (row.is_read ? row.created_at : null),
   };
 }
 
