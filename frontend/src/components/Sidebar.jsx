@@ -31,6 +31,11 @@ export default function Sidebar({
       href: `/projects/${projectId}/tasks`,
     });
     contextItems.push({
+      label: "Timeline",
+      icon: "🗓️",
+      href: `/projects/${projectId}/timeline`,
+    });
+    contextItems.push({
       label: "Team Hub",
       icon: "👥",
       href: `/projects/${projectId}/team`,

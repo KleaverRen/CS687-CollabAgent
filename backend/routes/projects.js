@@ -31,6 +31,21 @@ const projectValidators = [
   body('advisor_name').optional().trim().notEmpty().withMessage('Advisor name required'),
 ];
 
+async function canReadProject(user, projectId) {
+  const result = await pool.query(
+    `SELECT 1
+     FROM projects p
+     WHERE p.id = $1
+       AND (
+         p.owner_id = $2
+         OR p.id IN (SELECT project_id FROM project_members WHERE user_id = $2)
+         OR p.visibility = 'public'
+       )`,
+    [projectId, user.id]
+  );
+  return result.rows.length > 0;
+}
+
 async function updateProject(req, res) {
   if (!requireAdvisor(req, res)) return;
 
@@ -123,6 +138,184 @@ router.get('/', [
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+// GET /api/projects/:id/timeline - timeline-ready tasks and dependencies
+router.get(
+  '/:id/timeline',
+  [
+    query('workstream').optional().trim().notEmpty(),
+    query('tag').optional().trim().notEmpty(),
+    query('assignee').optional().isUUID(),
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty())
+      return res.status(400).json({ errors: errors.array() });
+
+    const { workstream, tag, assignee } = req.query;
+
+    try {
+      if (!(await canReadProject(req.user, req.params.id))) {
+        return res.status(404).json({ error: 'Project not found or unauthorized' });
+      }
+
+      const params = [req.params.id];
+      let filters = '';
+
+      if (workstream) {
+        params.push(workstream);
+        filters += `
+          AND COALESCE(
+            NULLIF(t.metadata->>'workstream', ''),
+            CASE WHEN array_length(t.tags, 1) > 0 THEN t.tags[1] ELSE 'General' END
+          ) = $${params.length}`;
+      }
+
+      if (tag) {
+        params.push(tag);
+        filters += ` AND t.tags @> ARRAY[$${params.length}]::text[]`;
+      }
+
+      if (assignee) {
+        params.push(assignee);
+        filters += ` AND t.assigned_to = $${params.length}`;
+      }
+
+      const tasksResult = await pool.query(
+        `SELECT
+           t.id,
+           t.project_id,
+           t.title AS name,
+           t.title,
+           t.status,
+           t.priority,
+           t.assigned_to,
+           u.full_name AS assignee_name,
+           u.avatar_url AS assignee_avatar,
+           t.deadline,
+           t.estimated_hours,
+           t.tags,
+           COALESCE(
+             NULLIF(t.metadata->>'workstream', ''),
+             CASE WHEN array_length(t.tags, 1) > 0 THEN t.tags[1] ELSE 'General' END
+           ) AS workstream,
+           COALESCE(
+             CASE
+               WHEN NULLIF(t.metadata->>'start_date', '') ~ '^\\d{4}-\\d{2}-\\d{2}'
+                 THEN (t.metadata->>'start_date')::timestamptz
+               ELSE NULL
+             END,
+             CASE
+               WHEN t.deadline IS NOT NULL THEN
+                 t.deadline - make_interval(days => GREATEST(1, CEIL(COALESCE(t.estimated_hours, 8) / 8.0)::int))
+               ELSE t.created_at
+             END
+           ) AS start_date,
+           t.created_at,
+           t.updated_at
+         FROM tasks t
+         LEFT JOIN users u ON t.assigned_to = u.id
+         WHERE t.project_id = $1
+         ${filters}
+         ORDER BY workstream ASC, start_date ASC, t.deadline ASC NULLS LAST, t.created_at ASC`,
+        params
+      );
+
+      const taskIds = tasksResult.rows.map((task) => task.id);
+      const dependenciesResult = taskIds.length
+        ? await pool.query(
+          `SELECT
+             td.parent_task_id AS source,
+             td.child_task_id AS target,
+             td.dep_type AS type
+           FROM task_dependencies td
+           WHERE td.parent_task_id = ANY($1::uuid[])
+             AND td.child_task_id = ANY($1::uuid[])
+           ORDER BY td.created_at ASC`,
+          [taskIds]
+        )
+        : { rows: [] };
+
+      const metaResult = await pool.query(
+        `SELECT
+           COALESCE(
+             NULLIF(t.metadata->>'workstream', ''),
+             CASE WHEN array_length(t.tags, 1) > 0 THEN t.tags[1] ELSE 'General' END
+           ) AS workstream,
+           tag.value AS tag
+         FROM tasks t
+         LEFT JOIN LATERAL unnest(t.tags) AS tag(value) ON TRUE
+         WHERE t.project_id = $1`,
+        [req.params.id]
+      );
+
+      const membersResult = await pool.query(
+        `SELECT u.id, u.full_name, u.avatar_url, pm.member_role
+         FROM project_members pm
+         JOIN users u ON pm.user_id = u.id
+         WHERE pm.project_id = $1
+         ORDER BY u.full_name ASC`,
+        [req.params.id]
+      );
+
+      const workstreams = new Set();
+      const tags = new Set();
+      for (const row of metaResult.rows) {
+        if (row.workstream) workstreams.add(row.workstream);
+        if (row.tag) tags.add(row.tag);
+      }
+
+      const now = new Date();
+      const byId = new Map(tasksResult.rows.map((task) => [task.id, task]));
+      const conflicts = [];
+
+      for (const task of tasksResult.rows) {
+        if (task.deadline && task.status !== 'done' && new Date(task.deadline) < now) {
+          conflicts.push({
+            type: 'overdue',
+            task_id: task.id,
+            severity: 'warning',
+            message: `${task.name} is overdue.`,
+          });
+        }
+      }
+
+      for (const dep of dependenciesResult.rows) {
+        const source = byId.get(dep.source);
+        const target = byId.get(dep.target);
+        if (source?.deadline && target?.deadline && new Date(target.deadline) < new Date(source.deadline)) {
+          conflicts.push({
+            type: 'dependency_order',
+            task_id: target.id,
+            dependency_id: source.id,
+            severity: 'critical',
+            message: `${target.name} is due before dependency ${source.name}.`,
+          });
+        }
+      }
+
+      res.json({
+        tasks: tasksResult.rows.map((task) => ({
+          ...task,
+          dependencies: dependenciesResult.rows
+            .filter((dep) => dep.target === task.id)
+            .map((dep) => dep.source),
+          completion_status: task.status,
+        })),
+        dependencies: dependenciesResult.rows,
+        conflicts,
+        filters: {
+          workstreams: Array.from(workstreams).sort(),
+          tags: Array.from(tags).sort(),
+          assignees: membersResult.rows,
+        },
+      });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  }
+);
 
 // POST /api/projects - create project
 router.post(

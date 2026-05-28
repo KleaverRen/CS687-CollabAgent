@@ -15,6 +15,7 @@ import AgentLogs from './pages/AgentLogs';
 import AIWorkbench from './pages/AIWorkbench';
 import TeamCoordinationHub from './pages/TeamCoordinationHub';
 import DocumentManager from './pages/DocumentManager';
+import TimelineView from './pages/TimelineView';
 
 function AppRoutes() {
   const { user, loading } = useAuth();
@@ -64,6 +65,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <TaskBoard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/projects/:id/timeline"
+        element={
+          <ProtectedRoute>
+            <TimelineView />
           </ProtectedRoute>
         }
       />
