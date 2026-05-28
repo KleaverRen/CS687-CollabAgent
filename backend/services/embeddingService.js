@@ -1,4 +1,5 @@
 const eventBroker = require('./eventBroker');
+const { updateDocumentStatus } = require('./documentStatusService');
 
 class EmbeddingService {
   constructor() {
@@ -16,27 +17,56 @@ class EmbeddingService {
       
       console.log(`[EmbeddingService] 🧠 Generating embeddings for ${chunks.length} chunks of "${title}"`);
 
-      const vectors = [];
-      for (const chunk of chunks) {
-        const embedding = await this.getEmbedding(chunk.content);
-        vectors.push({
-          chunkId: chunk.chunkId,
-          content: chunk.content,
-          index: chunk.index,
-          embedding,
-          metadata: chunk.metadata
+      try {
+        await updateDocumentStatus({
+          documentId,
+          projectId,
+          title,
+          status: 'embedding',
+          progress: 65,
         });
-      }
 
-      console.log(`[EmbeddingService] ✅ Vector embeddings generated for "${title}".`);
-      
-      // Publish embeddings ready event
-      eventBroker.publish('document.embeddings.ready', {
-        documentId,
-        projectId,
-        title,
-        vectors
-      });
+        const vectors = [];
+        for (const chunk of chunks) {
+          const embedding = await this.getEmbedding(chunk.content);
+          vectors.push({
+            chunkId: chunk.chunkId,
+            content: chunk.content,
+            index: chunk.index,
+            embedding,
+            metadata: chunk.metadata
+          });
+        }
+
+        console.log(`[EmbeddingService] ✅ Vector embeddings generated for "${title}".`);
+
+        await updateDocumentStatus({
+          documentId,
+          projectId,
+          title,
+          status: 'indexing',
+          progress: 85,
+          metadata: { chunkCount: vectors.length },
+        });
+        
+        // Publish embeddings ready event
+        eventBroker.publish('document.embeddings.ready', {
+          documentId,
+          projectId,
+          title,
+          vectors
+        });
+      } catch (err) {
+        await updateDocumentStatus({
+          documentId,
+          projectId,
+          title,
+          status: 'failed',
+          progress: 100,
+          error: err.message,
+        });
+        throw err;
+      }
     });
   }
 

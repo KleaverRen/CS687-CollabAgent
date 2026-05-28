@@ -14,6 +14,7 @@ import ProjectOverview from './pages/ProjectOverview';
 import AgentLogs from './pages/AgentLogs';
 import AIWorkbench from './pages/AIWorkbench';
 import TeamCoordinationHub from './pages/TeamCoordinationHub';
+import DocumentManager from './pages/DocumentManager';
 
 function AppRoutes() {
   const { user, loading } = useAuth();
@@ -71,6 +72,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <AIWorkbench />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/projects/:id/documents"
+        element={
+          <ProtectedRoute>
+            <DocumentManager />
           </ProtectedRoute>
         }
       />

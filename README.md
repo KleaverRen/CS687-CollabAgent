@@ -250,6 +250,9 @@ npm run dev:frontend   # Terminal 2 → http://localhost:3000
 | PATCH  | /api/users/profile          | Update profile       | ✅   |
 | PATCH  | /api/users/password         | Change password      | ✅   |
 | GET    | /api/users/dashboard-stats  | Get stats            | ✅   |
+| GET    | /api/projects/:id/documents | List project documents and indexing status | ✅   |
+| POST   | /api/projects/:id/documents | Upload PDF, DOCX, or TXT for RAG indexing | ✅   |
+| GET    | /api/projects/:id/documents/:documentId | Get one document status | ✅   |
 
 ---
 
@@ -261,6 +264,8 @@ npm run dev:frontend   # Terminal 2 → http://localhost:3000
 - **project_members** — Many-to-many: users ↔ projects
 - **agents** — AI agents per project
 - **documents** — Knowledge base files with indexing status
+
+The Document Manager reuses the existing `documents` table. Upload progress is stored in `documents.embedding_status` and `documents.metadata.progress`; no replacement table is created. The migration only backfills missing document columns and adds `idx_documents_project_status` for project-level filtering.
 
 ---
 
@@ -290,9 +295,16 @@ The **Knowledge Agent** (powered by RAG — Retrieval-Augmented Generation) inge
 
 **Capabilities:**
 - Index project documentation, research papers, and notes by title and content
+- Upload PDF, DOCX, and TXT files from `/projects/:id/documents`
 - Query the indexed knowledge base with natural language questions
 - See retrieved source snippets alongside the generated answer
 - Stream ingestion events in real time
+
+### Document Manager
+
+The Document Manager page at `/projects/:id/documents` lists uploaded files, supports filename search plus status/type filters, and uploads supported files through multipart form data. The backend extracts text with `pdf-parse`, `mammoth`, or UTF-8 text parsing, stores the source row in `documents`, and publishes the existing `document.created` RAG event so the current chunking, embedding, and vector indexing pipeline remains the source of truth.
+
+Architectural assumption: the active vector store is the existing in-memory `VectorStorage` service. Uploaded documents become queryable by the Knowledge Agent after the `document.indexed` event has fired in the running backend process.
 
 Example prompts:
 

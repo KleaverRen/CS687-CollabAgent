@@ -1,4 +1,5 @@
 const eventBroker = require('./eventBroker');
+const { updateDocumentStatus } = require('./documentStatusService');
 
 class VectorStorage {
   constructor() {
@@ -13,28 +14,49 @@ class VectorStorage {
       
       console.log(`[VectorStorage] 📥 Indexing ${vectors.length} vectors for document: "${title}"`);
 
-      // De-duplicate: Remove existing chunks for this document in case of a re-index/update
-      this.index = this.index.filter(item => item.metadata.documentId !== documentId);
+      try {
+        // De-duplicate: Remove existing chunks for this document in case of a re-index/update
+        this.index = this.index.filter(item => item.metadata.documentId !== documentId);
 
-      // Add to index
-      for (const vec of vectors) {
-        this.index.push({
-          chunkId: vec.chunkId,
-          content: vec.content,
-          embedding: vec.embedding,
-          metadata: vec.metadata
+        // Add to index
+        for (const vec of vectors) {
+          this.index.push({
+            chunkId: vec.chunkId,
+            content: vec.content,
+            embedding: vec.embedding,
+            metadata: vec.metadata
+          });
+        }
+
+        console.log(`[VectorStorage] 💾 Successfully indexed "${title}". Total vectors in index: ${this.index.length}`);
+
+        await updateDocumentStatus({
+          documentId,
+          projectId,
+          title,
+          status: 'indexed',
+          progress: 100,
+          metadata: { chunkCount: vectors.length },
         });
+
+        // Publish indexed completed event
+        eventBroker.publish('document.indexed', {
+          documentId,
+          projectId,
+          title,
+          chunkCount: vectors.length
+        });
+      } catch (err) {
+        await updateDocumentStatus({
+          documentId,
+          projectId,
+          title,
+          status: 'failed',
+          progress: 100,
+          error: err.message,
+        });
+        throw err;
       }
-
-      console.log(`[VectorStorage] 💾 Successfully indexed "${title}". Total vectors in index: ${this.index.length}`);
-
-      // Publish indexed completed event
-      eventBroker.publish('document.indexed', {
-        documentId,
-        projectId,
-        title,
-        chunkCount: vectors.length
-      });
     });
   }
 

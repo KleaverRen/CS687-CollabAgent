@@ -41,6 +41,11 @@ export default function Sidebar({
       href: `/projects/${projectId}/ai`,
     });
     contextItems.push({
+      label: "Documents",
+      icon: "📄",
+      href: `/projects/${projectId}/documents`,
+    });
+    contextItems.push({
       label: "Agent Logs",
       icon: "🤖",
       href: `/projects/${projectId}/agents`,

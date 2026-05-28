@@ -120,6 +120,18 @@ const createTables = async () => {
       );
     `);
 
+    await client.query(`
+      ALTER TABLE documents
+      ADD COLUMN IF NOT EXISTS content TEXT,
+      ADD COLUMN IF NOT EXISTS file_url TEXT,
+      ADD COLUMN IF NOT EXISTS file_type VARCHAR(100),
+      ADD COLUMN IF NOT EXISTS file_size_bytes BIGINT,
+      ADD COLUMN IF NOT EXISTS indexed BOOLEAN DEFAULT FALSE,
+      ADD COLUMN IF NOT EXISTS embedding_status VARCHAR(50) DEFAULT 'pending',
+      ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}',
+      ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+    `);
+
     // Activity log for Team Coordination Agent
     await client.query(`
       CREATE TABLE IF NOT EXISTS activity_log (
@@ -244,6 +256,7 @@ const createTables = async () => {
       CREATE INDEX IF NOT EXISTS idx_projects_owner ON projects(owner_id);
       CREATE INDEX IF NOT EXISTS idx_project_members_user ON project_members(user_id);
       CREATE INDEX IF NOT EXISTS idx_documents_project ON documents(project_id);
+      CREATE INDEX IF NOT EXISTS idx_documents_project_status ON documents(project_id, embedding_status);
       CREATE INDEX IF NOT EXISTS idx_activity_project_created ON activity_log(project_id, created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_activity_actor_created ON activity_log(actor_id, created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_notifications_user_created ON notifications(user_id, created_at DESC);

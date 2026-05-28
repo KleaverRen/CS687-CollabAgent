@@ -10,6 +10,7 @@ const userRoutes = require("./routes/users");
 const taskRoutes = require("./routes/tasks");
 const aiRoutes = require("./routes/ai_suggestions");
 const ragRoutes = require("./routes/rag");
+const documentRoutes = require("./routes/documents");
 const notificationRoutes = require("./routes/notifications");
 const agentTaskRoutes = require("./routes/agents/task");
 const coordinationRoutes = require("./routes/agents/coordination");
@@ -60,6 +61,7 @@ app.get("/health", (req, res) => {
 
 // Routes
 app.use("/api/auth", authLimiter, authRoutes);
+app.use("/api/projects/:id/documents", documentRoutes);
 app.use("/api/projects", projectRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/tasks", taskRoutes);

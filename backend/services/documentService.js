@@ -1,4 +1,5 @@
 const eventBroker = require('./eventBroker');
+const { updateDocumentStatus } = require('./documentStatusService');
 
 class DocumentService {
   constructor() {
@@ -11,32 +12,65 @@ class DocumentService {
       const { documentId, content, title, projectId, metadata } = payload;
       
       console.log(`[DocumentService] 📄 Parsing document: "${title}" (ID: ${documentId})`);
-      
-      // Perform text chunking
-      const chunks = this.chunkText(content, {
-        chunkSize: 500, // characters
-        chunkOverlap: 100 // characters overlap
-      });
 
-      console.log(`[DocumentService] ✂️  Decomposed "${title}" into ${chunks.length} chunks.`);
+      try {
+        await updateDocumentStatus({
+          documentId,
+          projectId,
+          title,
+          status: 'chunking',
+          progress: 35,
+        });
 
-      // Publish chunk parsed event
-      eventBroker.publish('document.chunks.ready', {
-        documentId,
-        projectId,
-        title,
-        chunks: chunks.map((c, idx) => ({
-          chunkId: `${documentId}_chk_${idx}`,
-          index: idx,
-          content: c,
-          metadata: {
-            ...metadata,
-            title,
-            projectId,
-            documentId
-          }
-        }))
-      });
+        // Perform text chunking
+        const chunks = this.chunkText(content, {
+          chunkSize: 500, // characters
+          chunkOverlap: 100 // characters overlap
+        });
+
+        if (chunks.length === 0) {
+          throw new Error('No text chunks were produced from this document.');
+        }
+
+        console.log(`[DocumentService] ✂️  Decomposed "${title}" into ${chunks.length} chunks.`);
+
+        await updateDocumentStatus({
+          documentId,
+          projectId,
+          title,
+          status: 'embedding',
+          progress: 55,
+          metadata: { chunkCount: chunks.length },
+        });
+
+        // Publish chunk parsed event
+        eventBroker.publish('document.chunks.ready', {
+          documentId,
+          projectId,
+          title,
+          chunks: chunks.map((c, idx) => ({
+            chunkId: `${documentId}_chk_${idx}`,
+            index: idx,
+            content: c,
+            metadata: {
+              ...metadata,
+              title,
+              projectId,
+              documentId
+            }
+          }))
+        });
+      } catch (err) {
+        await updateDocumentStatus({
+          documentId,
+          projectId,
+          title,
+          status: 'failed',
+          progress: 100,
+          error: err.message,
+        });
+        throw err;
+      }
     });
   }
 
