@@ -1,5 +1,5 @@
-const eventBroker = require('./eventBroker');
-const { updateDocumentStatus } = require('./documentStatusService');
+const eventBroker = require("./eventBroker");
+const { updateDocumentStatus } = require("./documentStatusService");
 
 class VectorStorage {
   constructor() {
@@ -9,55 +9,73 @@ class VectorStorage {
   }
 
   registerConsumers() {
-    eventBroker.subscribe('document.embeddings.ready', 'VectorStorage', async (payload) => {
-      const { documentId, projectId, title, vectors } = payload;
-      
-      console.log(`[VectorStorage] 📥 Indexing ${vectors.length} vectors for document: "${title}"`);
+    eventBroker.subscribe(
+      "document.embeddings.ready",
+      "VectorStorage",
+      async (payload) => {
+        const { documentId, projectId, title, vectors } = payload;
 
-      try {
-        // De-duplicate: Remove existing chunks for this document in case of a re-index/update
-        this.index = this.index.filter(item => item.metadata.documentId !== documentId);
+        console.log(
+          `[VectorStorage] 📥 Indexing ${vectors.length} vectors for document: "${title}"`,
+        );
 
-        // Add to index
-        for (const vec of vectors) {
-          this.index.push({
-            chunkId: vec.chunkId,
-            content: vec.content,
-            embedding: vec.embedding,
-            metadata: vec.metadata
+        try {
+          // Build temporary array atomically: create new chunks first, then replace old entries
+          const newChunks = [];
+          for (const vec of vectors) {
+            newChunks.push({
+              chunkId: vec.chunkId,
+              content: vec.content,
+              embedding: vec.embedding,
+              metadata: vec.metadata,
+            });
+          }
+
+          // De-duplicate: Remove existing chunks for this document, then add new ones
+          // This is now atomic: if the loop above fails, this.index remains unchanged
+          this.index = this.index
+            .filter((item) => item.metadata.documentId !== documentId)
+            .concat(newChunks);
+
+          console.log(
+            `[VectorStorage] 💾 Successfully indexed "${title}". Total vectors in index: ${this.index.length}`,
+          );
+
+          await updateDocumentStatus({
+            documentId,
+            projectId,
+            title,
+            status: "indexed",
+            progress: 100,
+            metadata: { chunkCount: vectors.length },
           });
+
+          // Publish indexed completed event
+          eventBroker.publish("document.indexed", {
+            documentId,
+            projectId,
+            title,
+            chunkCount: vectors.length,
+          });
+        } catch (err) {
+          // Wrap updateDocumentStatus in try/catch to preserve original error context
+          try {
+            await updateDocumentStatus({
+              documentId,
+              projectId,
+              title,
+              status: "failed",
+              progress: null, // Use null to clearly indicate failure rather than completion
+              error: err.message,
+            });
+          } catch (statusErr) {
+            // Attach secondary error and re-throw original with context preserved
+            err.updateStatusError = statusErr;
+          }
+          throw err;
         }
-
-        console.log(`[VectorStorage] 💾 Successfully indexed "${title}". Total vectors in index: ${this.index.length}`);
-
-        await updateDocumentStatus({
-          documentId,
-          projectId,
-          title,
-          status: 'indexed',
-          progress: 100,
-          metadata: { chunkCount: vectors.length },
-        });
-
-        // Publish indexed completed event
-        eventBroker.publish('document.indexed', {
-          documentId,
-          projectId,
-          title,
-          chunkCount: vectors.length
-        });
-      } catch (err) {
-        await updateDocumentStatus({
-          documentId,
-          projectId,
-          title,
-          status: 'failed',
-          progress: 100,
-          error: err.message,
-        });
-        throw err;
-      }
-    });
+      },
+    );
   }
 
   /**
@@ -67,20 +85,24 @@ class VectorStorage {
    * @param {number} limit Number of top matching chunks to return.
    */
   async search(queryVector, projectId, limit = 3) {
-    console.log(`[VectorStorage] 🔍 Performing vector semantic search in Project: ${projectId}`);
-    
+    console.log(
+      `[VectorStorage] 🔍 Performing vector semantic search in Project: ${projectId}`,
+    );
+
     // Filter index by projectId (standard multitenancy metadata filtering)
-    const filteredIndex = this.index.filter(item => item.metadata.projectId === projectId);
-    
+    const filteredIndex = this.index.filter(
+      (item) => item.metadata.projectId === projectId,
+    );
+
     if (filteredIndex.length === 0) {
       return [];
     }
 
     // Calculate Cosine Similarity (Since embeddings are L2 normalized, dot product = cosine similarity)
-    const scoredChunks = filteredIndex.map(item => {
+    const scoredChunks = filteredIndex.map((item) => {
       let score = 0;
       const dim = Math.min(item.embedding.length, queryVector.length);
-      
+
       for (let i = 0; i < dim; i++) {
         score += item.embedding[i] * queryVector[i];
       }
@@ -89,7 +111,7 @@ class VectorStorage {
         chunkId: item.chunkId,
         content: item.content,
         metadata: item.metadata,
-        similarity: parseFloat(score.toFixed(4))
+        similarity: parseFloat(score.toFixed(4)),
       };
     });
 
@@ -98,7 +120,9 @@ class VectorStorage {
       .sort((a, b) => b.similarity - a.similarity)
       .slice(0, limit);
 
-    console.log(`[VectorStorage] 🎯 Vector Search finished. Hits returned: ${hits.length} (Max similarity: ${hits[0]?.similarity || 0})`);
+    console.log(
+      `[VectorStorage] 🎯 Vector Search finished. Hits returned: ${hits.length} (Max similarity: ${hits[0]?.similarity || 0})`,
+    );
     return hits;
   }
 
@@ -113,7 +137,7 @@ class VectorStorage {
         summary[docId] = {
           title: item.metadata.title,
           projectId: item.metadata.projectId,
-          chunkCount: 0
+          chunkCount: 0,
         };
       }
       summary[docId].chunkCount++;

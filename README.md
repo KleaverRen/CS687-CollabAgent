@@ -243,6 +243,13 @@ npm run dev:frontend   # Terminal 2 → http://localhost:3000
 | PATCH  | /api/projects/:id     | Update project       | ✅   |
 | DELETE | /api/projects/:id     | Delete project       | ✅   |
 
+### Project Documents
+| Method | Endpoint                    | Description          | Auth |
+|--------|-----------------------------|----------------------|------|
+| GET    | /api/projects/:id/documents | List project documents and indexing status | ✅   |
+| POST   | /api/projects/:id/documents | Upload PDF, DOCX, or TXT for RAG indexing | ✅   |
+| GET    | /api/projects/:id/documents/:documentId | Get one document status | ✅   |
+
 ### Users
 | Method | Endpoint                    | Description          | Auth |
 |--------|-----------------------------|----------------------|------|
@@ -250,9 +257,6 @@ npm run dev:frontend   # Terminal 2 → http://localhost:3000
 | PATCH  | /api/users/profile          | Update profile       | ✅   |
 | PATCH  | /api/users/password         | Change password      | ✅   |
 | GET    | /api/users/dashboard-stats  | Get stats            | ✅   |
-| GET    | /api/projects/:id/documents | List project documents and indexing status | ✅   |
-| POST   | /api/projects/:id/documents | Upload PDF, DOCX, or TXT for RAG indexing | ✅   |
-| GET    | /api/projects/:id/documents/:documentId | Get one document status | ✅   |
 
 ---
 
