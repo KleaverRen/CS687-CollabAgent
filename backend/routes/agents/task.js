@@ -186,11 +186,18 @@ function findImplicitTaskMatch(tasks, request, currentUser) {
 
 function looksLikeTaskBreakdownRequest(request) {
   const text = String(request || "").toLowerCase();
-  return (
-    /\b(multiple|comprehensive|breakdown|workstreams?|task list|tasks)\b/.test(
+  const asksForManyTasks =
+    /\b(task list|tasks|workstreams?|breakdown|actionable|comprehensive|for each task)\b/.test(
       text,
-    ) && /\b(generate|create|draft|plan)\b/.test(text)
-  );
+    );
+  const planningIntent =
+    /\b(generate|create|draft|plan|need|provide|structure|develop|prepare)\b/.test(
+      text,
+    );
+  const hasEnumeratedWorkstreams =
+    (text.match(/\b\d+\.\s+[a-z]/g) || []).length >= 2;
+
+  return asksForManyTasks && (planningIntent || hasEnumeratedWorkstreams);
 }
 
 function normalizeGeneratedTask(task, index) {
@@ -228,6 +235,19 @@ function normalizeGeneratedTask(task, index) {
       potential_blocker: blocker,
       order: index + 1,
     },
+  };
+}
+
+function normalizeSingleTaskDraft(draft, request) {
+  const fallbackTitle = String(request || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 80);
+
+  return {
+    title: String(draft?.title || fallbackTitle || "New task").trim(),
+    priority: normalizePriority(draft?.priority),
+    assignee_name: draft?.assignee_name || null,
   };
 }
 
@@ -396,7 +416,7 @@ Create 10 to 16 tasks. Do not include markdown.`;
     }
 
     const fallbackDraft = {
-      title: request.substring(0, 50) + "...",
+      title: request.replace(/\s+/g, " ").trim().substring(0, 80),
       priority: "medium",
       assignee_name: null,
     };
@@ -407,13 +427,13 @@ If the user says "assign it to me", "for me", "assign me", or any similar self-a
 Respond strictly with valid JSON.
 Format: { "title": "string", "priority": "string", "assignee_name": "string or null" }`;
 
-    const draft = await generationService.generateJson(
+    const parsedDraft = await generationService.generateJson(
       systemPrompt,
       request,
       fallbackDraft,
       provider,
     );
-    draft.priority = normalizePriority(draft.priority);
+    const draft = normalizeSingleTaskDraft(parsedDraft, request);
 
     // If the user explicitly asked to be assigned ("assign it to me", "for me", etc.)
     // but the LLM didn't extract an assignee, default to "me" so resolveAssigneeId
@@ -772,5 +792,10 @@ router.get("/prioritized", authenticate, async (req, res) => {
     res.status(500).json({ error: "Failed to fetch prioritized tasks" });
   }
 });
+
+router._test = {
+  looksLikeTaskBreakdownRequest,
+  normalizeSingleTaskDraft,
+};
 
 module.exports = router;
