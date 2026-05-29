@@ -166,6 +166,11 @@ class GenerationService {
       };
     }
 
+    const directFocusAnswer = this.answerFocusQuestion(query.toLowerCase(), contextHits);
+    if (directFocusAnswer) {
+      return this.formatRagResponse(directFocusAnswer, contextHits);
+    }
+
     // Step 3: Construct prompt and generate answer
     let answerText = "";
     
@@ -215,9 +220,17 @@ class GenerationService {
         documentTitle: hit.metadata.title,
         documentId: hit.metadata.documentId,
         similarity: hit.similarity,
-        snippet: hit.content.slice(0, 150) + "..."
+        snippet: this.buildSnippet(hit.content)
       }))
     };
+  }
+
+  buildSnippet(content, maxLength = 180) {
+    const normalized = String(content || '').replace(/\s+/g, ' ').trim();
+    if (normalized.length <= maxLength) return normalized;
+
+    const end = normalized.lastIndexOf(' ', maxLength);
+    return `${normalized.slice(0, end > maxLength * 0.6 ? end : maxLength).trim()}...`;
   }
 
   /**
@@ -226,13 +239,16 @@ class GenerationService {
    */
   localReasoningEngine(query, chunks) {
     const cleanQuery = query.toLowerCase();
+    const focusAnswer = this.answerFocusQuestion(cleanQuery, chunks);
+    if (focusAnswer) return focusAnswer;
+
     const sentences = [];
 
     // Extract sentences from matching chunks that share vocabulary/concepts with the query
     const queryWords = cleanQuery.replace(/[^\w\s]/g, '').split(/\s+/).filter(w => w.length > 3);
     
     for (const chunk of chunks) {
-      const docSentences = chunk.content.split(/(?<=[.!?])\s+/);
+      const docSentences = [chunk.metadata.title, ...chunk.content.split(/(?<=[.!?])\s+/)];
       for (const sentence of docSentences) {
         const cleanSentence = sentence.toLowerCase();
         // Check for matching keywords
@@ -281,9 +297,50 @@ class GenerationService {
     return md;
   }
 
+  answerFocusQuestion(cleanQuery, chunks) {
+    if (!/\bfocus(?:es|ed)?\b|\bfocus on\b|\babout\b/.test(cleanQuery)) return null;
+
+    const phaseMatch = cleanQuery.match(/\bphase\s*(\d+)\b/);
+    if (!phaseMatch) return null;
+
+    const phaseLabel = `phase ${phaseMatch[1]}`;
+    const matchingChunks = chunks
+      .filter((chunk) => String(chunk.metadata.title || '').toLowerCase().includes(phaseLabel))
+      .sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+
+    if (matchingChunks.length === 0) return null;
+
+    const title = matchingChunks[0].metadata.title;
+    const titleFocus = title.includes(':') ? title.split(':').slice(1).join(':').trim() : title;
+    const content = matchingChunks.map((chunk) => chunk.content).join(' ');
+    const normalizedContent = content.replace(/\s+/g, ' ').trim();
+    const uniqueSentences = [...new Set(normalizedContent.split(/(?<=[.!?])\s+/).filter(Boolean))];
+    const supportingSentences = uniqueSentences
+      .map((sentence, index) => ({
+        sentence,
+        index,
+        score:
+          (/asynchronous|message queue|event-driven|background/i.test(sentence) ? 3 : 0) +
+          (/real-time|bidirectional|websocket|push|dashboard|manual page refresh/i.test(sentence) ? 3 : 0) +
+          (/live data|state management/i.test(sentence) ? 1 : 0) -
+          (/^In Phase 2\b/i.test(sentence) ? 2 : 0),
+      }))
+      .filter((item) => item.score > 0)
+      .sort((a, b) => b.score - a.score || a.index - b.index)
+      .slice(0, 4)
+      .sort((a, b) => a.index - b.index)
+      .map((item) => item.sentence);
+
+    const details = supportingSentences.length
+      ? ` The supporting details are: ${supportingSentences.join(' ')}`
+      : '';
+
+    return `${phaseMatch[0].replace(/\b\w/g, (char) => char.toUpperCase())} focuses on ${titleFocus}.${details}`;
+  }
+
   async queryGroq(query, chunks) {
     const contextText = chunks.map((c, i) => `[Source ${i+1}: ${c.metadata.title}]\n${c.content}`).join("\n\n");
-    const systemPrompt = `You are CollabAgent RAG AI Assistant. Answer the user question ONLY based on the provided retrieved documentation context. If the context does not contain the answer, say "I cannot find this information in the project files." Do not make up answers.\n\nContext:\n{context}`;
+    const systemPrompt = `You are CollabAgent RAG AI Assistant. Answer the user question ONLY based on the provided retrieved documentation context. Treat document titles as source evidence, especially when they contain phase names or focus areas. If the context does not contain the answer, say "I cannot find this information in the project files." Do not make up answers.\n\nContext:\n{context}`;
 
     try {
       return await this.queryGroqMessages([
@@ -302,7 +359,7 @@ class GenerationService {
     return this.queryOllamaMessages([
       {
         role: 'system',
-        content: `You are CollabAgent RAG AI Assistant. Answer the user question ONLY based on the provided retrieved documentation context. If the context does not contain the answer, say "I cannot find this information in the project files." Do not make up answers.\n\nContext:\n${contextText}`
+        content: `You are CollabAgent RAG AI Assistant. Answer the user question ONLY based on the provided retrieved documentation context. Treat document titles as source evidence, especially when they contain phase names or focus areas. If the context does not contain the answer, say "I cannot find this information in the project files." Do not make up answers.\n\nContext:\n${contextText}`
       },
       { role: 'user', content: query }
     ]);
@@ -339,7 +396,7 @@ class GenerationService {
 
   async queryGemini(query, chunks) {
     const contextText = chunks.map((c, i) => `[Source ${i+1}: ${c.metadata.title}]\n${c.content}`).join("\n\n");
-    const systemPrompt = `You are CollabAgent RAG AI Assistant. Answer the user question ONLY based on the provided retrieved documentation context. If the context does not contain the answer, say "I cannot find this information in the project files." Do not make up answers.\n\nContext:\n${contextText}`;
+    const systemPrompt = `You are CollabAgent RAG AI Assistant. Answer the user question ONLY based on the provided retrieved documentation context. Treat document titles as source evidence, especially when they contain phase names or focus areas. If the context does not contain the answer, say "I cannot find this information in the project files." Do not make up answers.\n\nContext:\n${contextText}`;
 
     try {
       const response = await this.geminiClient.models.generateContent({

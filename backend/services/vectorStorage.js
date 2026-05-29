@@ -26,6 +26,7 @@ class VectorStorage {
             newChunks.push({
               chunkId: vec.chunkId,
               content: vec.content,
+              index: vec.index,
               embedding: vec.embedding,
               metadata: vec.metadata,
             });
@@ -110,6 +111,7 @@ class VectorStorage {
       return {
         chunkId: item.chunkId,
         content: item.content,
+        index: item.index,
         metadata: item.metadata,
         similarity: parseFloat(score.toFixed(4)),
       };

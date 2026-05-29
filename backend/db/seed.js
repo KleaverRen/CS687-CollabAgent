@@ -53,8 +53,9 @@ async function seed() {
       );
     }
 
-    // 5. Create Mock Tasks
+    // 5. Create Mock Tasks (with deadlines for testing reminder system)
     console.log("Inserting mock tasks...");
+    const now = new Date();
     const taskData = [
       {
         title: "API Endpoint Design",
@@ -63,6 +64,8 @@ async function seed() {
         est: 6,
         tags: ["api", "design"],
         assignee: users[0].id,
+        // Already done — no reminder expected
+        deadline: new Date(now.getTime() - 1 * 24 * 60 * 60 * 1000),
       },
       {
         title: "Database Schema Migration",
@@ -71,6 +74,8 @@ async function seed() {
         est: 4,
         tags: ["database"],
         assignee: users[1].id,
+        // Deadline in 2 days — should trigger "deadline.upcoming" reminder
+        deadline: new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000),
       },
       {
         title: "Frontend Kanban Board",
@@ -79,6 +84,8 @@ async function seed() {
         est: 18,
         tags: ["frontend", "design"],
         assignee: users[2].id,
+        // Deadline in 1 day — should trigger "deadline.urgent" reminder
+        deadline: new Date(now.getTime() + 1 * 24 * 60 * 60 * 1000),
       },
       {
         title: "AI Suggestion Engine",
@@ -87,6 +94,8 @@ async function seed() {
         est: 14,
         tags: ["ai", "api"],
         assignee: null,
+        // Deadline in 3 days — no reminder (outside 2-day window) and no assignee
+        deadline: new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000),
       },
       {
         title: "Integration Testing",
@@ -94,7 +103,9 @@ async function seed() {
         priority: "medium",
         est: 8,
         tags: ["testing"],
-        assignee: null,
+        assignee: users[0].id,
+        // Deadline 2 days ago, not done — should trigger "deadline.overdue" reminder
+        deadline: new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000),
       },
     ];
 
@@ -102,8 +113,8 @@ async function seed() {
     for (const t of taskData) {
       const res = await pool.query(
         `
-        INSERT INTO tasks (project_id, title, status, priority, estimated_hours, tags, assigned_to, created_by)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        INSERT INTO tasks (project_id, title, status, priority, estimated_hours, tags, assigned_to, created_by, deadline)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         RETURNING id;
       `,
         [
@@ -115,6 +126,7 @@ async function seed() {
           t.tags,
           t.assignee,
           users[3].id,
+          t.deadline,
         ],
       );
       taskIds.push(res.rows[0].id);

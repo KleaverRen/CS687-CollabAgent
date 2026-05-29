@@ -48,9 +48,11 @@ async function canReadProject(user, projectId) {
          p.owner_id = $2
          OR p.id IN (SELECT project_id FROM project_members WHERE user_id = $2)
          OR p.visibility = 'public'
-         OR (p.visibility = 'institution' AND p.institution_id = $3)
+         OR (p.visibility = 'institution' AND EXISTS (
+           SELECT 1 FROM users u WHERE u.id = p.owner_id AND u.institution = $3
+         ))
        )`,
-    [projectId, user.id, user.institution_id || null],
+    [projectId, user.id, user.institution || null],
   );
   return result.rows.length > 0;
 }

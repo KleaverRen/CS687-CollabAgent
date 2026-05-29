@@ -15,6 +15,20 @@ function normalizePriority(priority) {
     : "medium";
 }
 
+/**
+ * Detect self-assignment phrases in a natural-language request.
+ * Returns true when the user explicitly asks to be assigned the task.
+ */
+function detectSelfAssignment(text) {
+  const lower = String(text || "").toLowerCase();
+  return (
+    /\b(assign|allocate|delegate)\b.*\b(me|myself|self)\b/.test(lower) ||
+    /\b(me|myself|self)\b.*\b(assign|allocate|delegate)\b/.test(lower) ||
+    /\bfor me\b/.test(lower) ||
+    /\bmy task\b/.test(lower)
+  );
+}
+
 async function canStudentWorkOnProject(user, projectId) {
   if (user.role !== "student") return false;
   const result = await pool.query(
@@ -389,6 +403,7 @@ Create 10 to 16 tasks. Do not include markdown.`;
 
     const systemPrompt = `You are the CollabAgent Task Management AI. 
 Extract the following details from the user's request: title, priority (low, medium, high, urgent), and assignee_name (if mentioned).
+If the user says "assign it to me", "for me", "assign me", or any similar self-assignment phrase, set assignee_name to "me".
 Respond strictly with valid JSON.
 Format: { "title": "string", "priority": "string", "assignee_name": "string or null" }`;
 
@@ -399,6 +414,13 @@ Format: { "title": "string", "priority": "string", "assignee_name": "string or n
       provider,
     );
     draft.priority = normalizePriority(draft.priority);
+
+    // If the user explicitly asked to be assigned ("assign it to me", "for me", etc.)
+    // but the LLM didn't extract an assignee, default to "me" so resolveAssigneeId
+    // can map it to the current user in the /confirm step.
+    if (detectSelfAssignment(request) && !draft.assignee_name) {
+      draft.assignee_name = "me";
+    }
 
     // Return the draft to the user for confirmation (no DB write yet)
     res.json({

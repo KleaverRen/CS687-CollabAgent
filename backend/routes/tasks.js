@@ -3,7 +3,10 @@ const router = express.Router();
 const { body, query, validationResult } = require('express-validator');
 const pool = require('../config/database');
 const { authenticate } = require('../middleware/auth');
-const { recordProjectEvent } = require('../services/notificationService');
+const {
+  clearDeadlineNotificationsForTask,
+  recordProjectEvent,
+} = require('../services/notificationService');
 
 router.use(authenticate);
 
@@ -256,6 +259,10 @@ router.patch('/:id', [
     `, [req.params.id]);
     const updatedTask = full.rows[0];
     const previousTask = previous.rows[0] || {};
+    if (updatedTask.status === 'done') {
+      await clearDeadlineNotificationsForTask(updatedTask.id);
+    }
+
     const changes = {};
     ['title', 'status', 'priority', 'assigned_to'].forEach((field) => {
       if (previousTask[field] !== updatedTask[field]) {

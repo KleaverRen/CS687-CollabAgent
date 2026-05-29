@@ -92,3 +92,27 @@ test("markAllNotificationsRead only mutates unread rows for the authenticated us
   assert.deepEqual(calls[0].params, ["user-2"]);
   assert.match(calls[0].sql, /WHERE user_id = \$1 AND is_read = FALSE/);
 });
+
+test("clearDeadlineNotificationsForTask removes stale task deadline alerts", async () => {
+  const calls = [];
+  const fakePool = {
+    query: async (sql, params) => {
+      calls.push({ sql, params });
+      if (/COUNT\(\*\)::int AS count/.test(sql)) {
+        return { rows: [{ count: 0 }] };
+      }
+      return {
+        rowCount: 2,
+        rows: [{ user_id: "user-1" }, { user_id: "user-1" }],
+      };
+    },
+  };
+  const service = loadServiceWithPool(fakePool);
+
+  const deleted = await service.clearDeadlineNotificationsForTask("task-1");
+
+  assert.equal(deleted, 2);
+  assert.equal(calls[0].params[0], "task-1");
+  assert.match(calls[0].sql, /category = 'deadlines'/);
+  assert.match(calls[0].sql, /type LIKE 'deadline.%'/);
+});

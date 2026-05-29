@@ -11,6 +11,7 @@ const {
   markAllNotificationsRead,
   markNotificationRead,
 } = require("../services/notificationService");
+const { checkDeadlines } = require("../services/deadlineReminderService");
 
 function handleValidation(req, res) {
   const errors = validationResult(req);
@@ -223,5 +224,30 @@ router.get(
     }
   },
 );
+
+/**
+ * POST /api/notifications/check-deadlines
+ * Manually trigger a deadline reminder check (for testing).
+ * Only available in non-production environments.
+ */
+router.post("/check-deadlines", authenticate, async (req, res) => {
+  if (process.env.NODE_ENV === "production") {
+    return res
+      .status(403)
+      .json({ error: "Manual deadline check not available in production" });
+  }
+
+  try {
+    await checkDeadlines();
+    const unreadCount = await getUnreadCount(req.user.id);
+    res.json({
+      message: "Deadline check completed",
+      unreadCount,
+    });
+  } catch (err) {
+    console.error("[Notifications] Deadline check error:", err);
+    res.status(500).json({ error: "Failed to run deadline check" });
+  }
+});
 
 module.exports = router;

@@ -28,13 +28,16 @@ class EmbeddingService {
 
         const vectors = [];
         for (const chunk of chunks) {
-          const embedding = await this.getEmbedding(chunk.content);
+          const embedding = await this.getEmbedding(chunk.searchText || chunk.content);
           vectors.push({
             chunkId: chunk.chunkId,
             content: chunk.content,
             index: chunk.index,
             embedding,
-            metadata: chunk.metadata
+            metadata: {
+              ...chunk.metadata,
+              searchText: chunk.searchText || chunk.content
+            }
           });
         }
 

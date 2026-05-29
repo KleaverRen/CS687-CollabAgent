@@ -16,6 +16,10 @@ const agentTaskRoutes = require("./routes/agents/task");
 const coordinationRoutes = require("./routes/agents/coordination");
 const feedbackRoutes = require("./routes/agents/feedback");
 const progressRoutes = require("./routes/agents/progress");
+const {
+  startScheduler: startDeadlineScheduler,
+  stopScheduler: stopDeadlineScheduler,
+} = require("./services/deadlineReminderService");
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -36,13 +40,13 @@ app.use(
 // Rate limiting
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: process.env.NODE_ENV === 'production' ? 100 : Infinity,
+  max: process.env.NODE_ENV === "production" ? 100 : Infinity,
   standardHeaders: true,
   legacyHeaders: false,
 });
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: process.env.NODE_ENV === 'production' ? 5 : Infinity,
+  max: process.env.NODE_ENV === "production" ? 5 : Infinity,
   message: { error: "Too many attempts, please try again later." },
 });
 
@@ -89,12 +93,28 @@ app.use((err, req, res, next) => {
   });
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`
 🚀 CollabAgent API running on http://localhost:${PORT}
 📊 Environment: ${process.env.NODE_ENV || "development"}
 🔗 Health: http://localhost:${PORT}/health
   `);
+
+  // Start the deadline reminder scheduler
+  startDeadlineScheduler();
+});
+
+// Graceful shutdown
+process.on("SIGTERM", () => {
+  console.log("SIGTERM received. Shutting down gracefully...");
+  stopDeadlineScheduler();
+  server.close(() => process.exit(0));
+});
+
+process.on("SIGINT", () => {
+  console.log("SIGINT received. Shutting down gracefully...");
+  stopDeadlineScheduler();
+  server.close(() => process.exit(0));
 });
 
 module.exports = app;

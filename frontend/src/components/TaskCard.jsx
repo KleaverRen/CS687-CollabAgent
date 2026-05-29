@@ -28,8 +28,8 @@ function Avatar({ name, avatarUrl, size = 'sm' }) {
   );
 }
 
-function DeadlineBadge({ deadline }) {
-  if (!deadline) return null;
+function DeadlineBadge({ deadline, status }) {
+  if (!deadline || String(status || '').toLowerCase() === 'done') return null;
   const days = Math.ceil((new Date(deadline) - new Date()) / 86400000);
   const overdue = days < 0;
   const urgent  = days >= 0 && days <= 2;
@@ -62,6 +62,7 @@ export default function TaskCard({ task, onOpen, dragging, readOnly = false }) {
           : 'border-[#e1e3e4] hover:border-[#003fb1]/40 hover:shadow-md'
         }
         ${dragging ? 'opacity-50 scale-95' : 'hover:-translate-y-0.5'}
+        ${menuOpen ? 'z-30' : 'z-0'}
       `}
       onClick={() => onOpen(task)}
     >
@@ -80,6 +81,8 @@ export default function TaskCard({ task, onOpen, dragging, readOnly = false }) {
           {!readOnly && <button
             className="opacity-0 group-hover:opacity-100 w-6 h-6 flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-400 transition-all"
             onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen); }}
+            aria-label="Task actions"
+            aria-expanded={menuOpen}
           >
             <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
               <circle cx="10" cy="4"  r="1.5" /><circle cx="10" cy="10" r="1.5" /><circle cx="10" cy="16" r="1.5" />
@@ -131,7 +134,7 @@ export default function TaskCard({ task, onOpen, dragging, readOnly = false }) {
         </div>
 
         <div className="flex items-center gap-2">
-          <DeadlineBadge deadline={task.deadline} />
+          <DeadlineBadge deadline={task.deadline} status={task.status} />
           {task.assignee_name && (
             <Avatar name={task.assignee_name} avatarUrl={task.assignee_avatar} />
           )}
@@ -141,7 +144,7 @@ export default function TaskCard({ task, onOpen, dragging, readOnly = false }) {
       {/* Dropdown menu */}
       {menuOpen && !readOnly && (
         <div
-          className="absolute right-2 top-10 z-20 bg-white border border-[#e1e3e4] rounded-xl shadow-lg py-1 w-40"
+          className="absolute right-2 top-10 z-50 bg-white border border-[#e1e3e4] rounded-xl shadow-lg py-1 w-40"
           onClick={(e) => e.stopPropagation()}
         >
           {['todo','in_progress','blocked','done'].map((s) => (

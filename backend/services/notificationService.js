@@ -246,6 +246,28 @@ async function markAllNotificationsRead(userId) {
   return result.rowCount;
 }
 
+async function clearDeadlineNotificationsForTask(taskId, client = pool) {
+  const result = await client.query(
+    `DELETE FROM notifications
+     WHERE entity_type = 'task'
+       AND entity_id = $1
+       AND category = 'deadlines'
+       AND type LIKE 'deadline.%'
+     RETURNING user_id`,
+    [taskId],
+  );
+
+  const userIds = [...new Set(result.rows.map((row) => row.user_id))];
+  for (const userId of userIds) {
+    eventBroker.publish(`notifications.user.${userId}`, {
+      notification: null,
+      unreadCount: await getUnreadCount(userId),
+    });
+  }
+
+  return result.rowCount;
+}
+
 async function listActivity(userId, { projectId, limit, before } = {}) {
   const params = [userId];
   let where = `(
@@ -280,6 +302,7 @@ async function listActivity(userId, { projectId, limit, before } = {}) {
 
 module.exports = {
   clampLimit,
+  clearDeadlineNotificationsForTask,
   createActivity,
   createNotification,
   serializeNotification,

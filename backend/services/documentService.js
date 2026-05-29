@@ -52,6 +52,7 @@ class DocumentService {
             chunkId: `${documentId}_chk_${idx}`,
             index: idx,
             content: c,
+            searchText: `${title}\n\n${c}`,
             metadata: {
               ...metadata,
               title,
@@ -75,7 +76,7 @@ class DocumentService {
   }
 
   /**
-   * Splits text into overlapping chunks using a sliding window.
+   * Splits text into paragraph/sentence-aligned chunks.
    * @param {string} text Raw text content.
    * @param {object} options Chunking configuration.
    * @returns {string[]} Array of text chunks.
@@ -83,40 +84,54 @@ class DocumentService {
   chunkText(text, { chunkSize, chunkOverlap }) {
     if (!text || typeof text !== 'string') return [];
     
-    // Normalize spaces
-    const cleanText = text.replace(/\s+/g, ' ').trim();
+    const paragraphs = text
+      .replace(/\r\n/g, '\n')
+      .split(/\n\s*\n/)
+      .map((paragraph) => paragraph.replace(/\s+/g, ' ').trim())
+      .filter(Boolean);
+    const cleanText = paragraphs.join(' ');
     if (cleanText.length <= chunkSize) return [cleanText];
 
     const chunks = [];
-    let start = 0;
+    let current = '';
 
-    while (start < cleanText.length) {
-      let end = start + chunkSize;
-      
-      // Attempt to align chunk boundaries with words/sentences if not at the absolute end
-      if (end < cleanText.length) {
-        const nextSpace = cleanText.indexOf(' ', end);
-        const lastPeriod = cleanText.lastIndexOf('.', end);
-        
-        // Prefer splitting at sentence boundary if close
-        if (lastPeriod > start + (chunkSize / 2)) {
-          end = lastPeriod + 1; // Include the period
-        } else if (nextSpace !== -1 && nextSpace < end + 20) {
-          end = nextSpace; // Align at word boundary
+    const pushCurrent = () => {
+      if (current.trim()) {
+        chunks.push(current.trim());
+        current = this.getWholeSentenceOverlap(chunks[chunks.length - 1], chunkOverlap);
+      }
+    };
+
+    for (const paragraph of paragraphs) {
+      const units = paragraph.length > chunkSize
+        ? paragraph.split(/(?<=[.!?])\s+/).filter(Boolean)
+        : [paragraph];
+
+      for (const unit of units) {
+        if (!current) {
+          current = unit;
+          continue;
         }
-      }
 
-      const chunk = cleanText.slice(start, end).trim();
-      if (chunk.length > 0) {
-        chunks.push(chunk);
-      }
+        if (`${current} ${unit}`.length > chunkSize) {
+          pushCurrent();
+        }
 
-      // Advance sliding window
-      start = end - chunkOverlap;
-      if (start >= cleanText.length || chunk.length === 0) break;
+        current = current ? `${current} ${unit}` : unit;
+      }
     }
 
+    pushCurrent();
+
     return chunks;
+  }
+
+  getWholeSentenceOverlap(chunk, chunkOverlap) {
+    if (!chunkOverlap) return '';
+
+    const sentences = chunk.split(/(?<=[.!?])\s+/).filter(Boolean);
+    const lastSentence = sentences[sentences.length - 1] || '';
+    return lastSentence.length <= chunkOverlap ? lastSentence : '';
   }
 }
 

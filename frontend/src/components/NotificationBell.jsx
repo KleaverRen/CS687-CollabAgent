@@ -9,6 +9,10 @@ const typeLabels = {
   "project.updated": "Project",
   "task.assigned": "Task",
   "task.updated": "Task",
+  "deadline.upcoming": "Deadline",
+  "deadline.urgent": "Deadline",
+  "deadline.today": "Deadline",
+  "deadline.overdue": "Overdue",
 };
 
 function formatTime(value) {
