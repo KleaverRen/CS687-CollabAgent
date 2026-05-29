@@ -209,6 +209,18 @@ function looksLikeTaskBreakdownRequest(request) {
   return asksForManyTasks && (planningIntent || hasEnumeratedWorkstreams);
 }
 
+/**
+ * Detect if the user is asking for recommendations or next steps.
+ */
+function looksLikeRecommendationRequest(request) {
+  const text = String(request || "").toLowerCase();
+  return (
+    /\b(recommend|suggest|next steps|what should i do|what tasks|pick for me)\b/.test(
+      text,
+    ) && /\b(i|me|my|next)\b/.test(text)
+  );
+}
+
 function normalizeGeneratedTask(task, index) {
   const complexity = String(
     task.complexity || task.effort || "Medium",
@@ -433,6 +445,72 @@ Create 10 to 16 tasks. Do not include markdown.`;
       });
     }
 
+    if (looksLikeRecommendationRequest(request)) {
+      const [projectRes, todoTasks] = await Promise.all([
+        pool.query("SELECT name, description FROM projects WHERE id = $1", [
+          projectId,
+        ]),
+        getProjectTodoTasks(projectId),
+      ]);
+
+      const project = projectRes.rows[0];
+      const taskListContext = todoTasks
+        .slice(0, 20)
+        .map(
+          (t) =>
+            `- "${t.title}" | Priority: ${t.priority} | Status: ${t.assigned_to ? "Assigned" : "Unassigned"}`,
+        )
+        .join("\n");
+
+      const systemPrompt = `You are the CollabAgent Task Advisor. 
+Analyze the "Current Tasks" list for project "${project?.name}". Your goal is to recommend the specific number of tasks the user should work on next.
+
+Rules:
+1. PRIORITIZE EXISTING: You MUST first look at the "Current Tasks (Existing)" list. Find tasks where Status is "Unassigned". Recommend these first.
+2. EXACT TITLES: For tasks picked from the existing list, you MUST use the EXACT title as written. Do not change punctuation or casing.
+3. QUANTITY: If the user specified a number (e.g. "next 3 tasks"), provide exactly that many. Default to 3 if unspecified.
+4. SUPPLEMENT: Only if there are fewer than the requested number of unassigned tasks available, suggest NEW tasks that align with the project goals: "${project?.description}".
+5. Return strictly valid JSON in this exact shape:
+ {
+  "message": "A brief encouraging summary of why these tasks were chosen.",
+  "tasks": [
+    {
+      "title": "Action-oriented title",
+      "description": "Specific detail on what to do",
+      "priority": "low | medium | high | critical",
+      "assignee_name": "me"
+    }
+  ]
+}`;
+
+      const userContext = `Project: ${project?.name}\nDescription: ${project?.description}\n\nCurrent Tasks (Existing):\n${taskListContext || "No tasks created yet."}\n\nUser Request: ${request}`;
+
+      const parsed = await generationService.generateJson(
+        systemPrompt,
+        userContext,
+        { tasks: [] },
+        provider,
+      );
+
+      const drafts = (parsed?.tasks || []).map((t, i) =>
+        normalizeGeneratedTask(
+          {
+            ...t,
+            workstream: "Recommended",
+          },
+          i,
+        ),
+      );
+
+      return res.json({
+        drafts,
+        requires_confirmation: true,
+        message:
+          parsed?.message ||
+          "Based on the project state, here are my recommendations for you:",
+      });
+    }
+
     const fallbackDraft = {
       title: request.replace(/\s+/g, " ").trim().substring(0, 80),
       priority: "medium",
@@ -473,50 +551,55 @@ Format: { "title": "string", "priority": "string", "assignee_name": "string or n
 });
 
 // POST /api/agents/task/confirm - Commit task to DB (Requires user_confirmed: true)
-router.post("/confirm", authenticate, requireStudentAgent, agentGate, async (req, res) => {
-  try {
-    const { draft, projectId } = req.body;
+router.post(
+  "/confirm",
+  authenticate,
+  requireStudentAgent,
+  agentGate,
+  async (req, res) => {
+    try {
+      const { draft, projectId } = req.body;
 
-    if (!draft || !draft.title || !projectId) {
-      return res
-        .status(400)
-        .json({ error: "Valid draft and projectId required" });
-    }
+      if (!draft || !draft.title || !projectId) {
+        return res
+          .status(400)
+          .json({ error: "Valid draft and projectId required" });
+      }
 
-    if (!(await canStudentWorkOnProject(req.user, projectId))) {
-      return res
-        .status(403)
-        .json({ error: "Only assigned students can create tasks" });
-    }
-    if (await isProjectArchived(projectId)) {
-      return res
-        .status(403)
-        .json({ error: "Archived projects are read-only." });
-    }
+      if (!(await canStudentWorkOnProject(req.user, projectId))) {
+        return res
+          .status(403)
+          .json({ error: "Only assigned students can create tasks" });
+      }
+      if (await isProjectArchived(projectId)) {
+        return res
+          .status(403)
+          .json({ error: "Archived projects are read-only." });
+      }
 
-    const assignedTo = await resolveAssigneeId(
-      draft.assignee_name,
-      projectId,
-      req.user,
-    );
-    const metadata = draft.metadata || {};
-    const duplicateParams = [
-      projectId,
-      draft.title,
-      assignedTo,
-      metadata.source,
-      metadata.order !== undefined && metadata.order !== null
-        ? String(metadata.order)
-        : null,
-    ];
-    const duplicateMetadataFilter = buildDuplicateTaskMetadataFilter(
-      metadata,
-      4,
-    );
+      const assignedTo = await resolveAssigneeId(
+        draft.assignee_name,
+        projectId,
+        req.user,
+      );
+      const metadata = draft.metadata || {};
+      const duplicateParams = [
+        projectId,
+        draft.title,
+        assignedTo,
+        metadata.source,
+        metadata.order !== undefined && metadata.order !== null
+          ? String(metadata.order)
+          : null,
+      ];
+      const duplicateMetadataFilter = buildDuplicateTaskMetadataFilter(
+        metadata,
+        4,
+      );
 
-    if (duplicateMetadataFilter) {
-      const duplicate = await pool.query(
-        `SELECT t.*, u.full_name AS assignee_name, u.avatar_url AS assignee_avatar
+      if (duplicateMetadataFilter) {
+        const duplicate = await pool.query(
+          `SELECT t.*, u.full_name AS assignee_name, u.avatar_url AS assignee_avatar
          FROM tasks t
          LEFT JOIN users u ON t.assigned_to = u.id
          WHERE t.project_id = $1
@@ -526,120 +609,191 @@ router.post("/confirm", authenticate, requireStudentAgent, agentGate, async (req
            ${duplicateMetadataFilter}
          ORDER BY t.created_at DESC
          LIMIT 1`,
-        duplicateParams,
+          duplicateParams,
+        );
+
+        if (duplicate.rows.length) {
+          return res.status(200).json({
+            task: duplicate.rows[0],
+            duplicate: true,
+            message: "Task already exists for this draft.",
+          });
+        }
+      }
+
+      // Check for an existing task with the SAME TITLE that is UNASSIGNED.
+      // If found, we update that one instead of creating a new one.
+      const existingUnassigned = await pool.query(
+        `SELECT t.*, u.full_name AS assignee_name, u.avatar_url AS assignee_avatar
+         FROM tasks t
+         LEFT JOIN users u ON t.assigned_to = u.id
+         WHERE t.project_id = $1 AND LOWER(TRIM(t.title)) = LOWER(TRIM($2))
+         AND t.assigned_to IS NULL AND t.status <> 'done'
+         LIMIT 1`,
+        [projectId, draft.title],
       );
 
-      if (duplicate.rows.length) {
+      if (existingUnassigned.rows.length && assignedTo) {
+        const updateResult = await pool.query(
+          `UPDATE tasks SET assigned_to = $1 WHERE id = $2 RETURNING *`,
+          [assignedTo, existingUnassigned.rows[0].id],
+        );
+
+        const updatedTask = updateResult.rows[0];
+
+        await recordProjectEvent({
+          projectId,
+          actorId: req.user.id,
+          eventType: "task.assigned",
+          entityType: "task",
+          entityId: updatedTask.id,
+          metadata: {
+            title: updatedTask.title,
+            priority: updatedTask.priority,
+            assignedTo: updatedTask.assigned_to,
+          },
+        });
+
         return res.status(200).json({
-          task: duplicate.rows[0],
+          task: {
+            ...updatedTask,
+            assignee_name: req.user.full_name,
+            assignee_avatar: req.user.avatar_url,
+          },
+          message: "Task assigned to you.",
+        });
+      }
+
+      const duplicateByTitle = await pool.query(
+        `SELECT t.*, u.full_name AS assignee_name, u.avatar_url AS assignee_avatar
+         FROM tasks t
+         LEFT JOIN users u ON t.assigned_to = u.id
+         WHERE t.project_id = $1
+           AND LOWER(TRIM(t.title)) = LOWER(TRIM($2))
+           AND t.status <> 'done'
+           AND t.assigned_to IS NOT DISTINCT FROM $3
+         ORDER BY t.created_at DESC
+         LIMIT 1`,
+        [projectId, draft.title, assignedTo],
+      );
+
+      if (duplicateByTitle.rows.length) {
+        return res.status(200).json({
+          task: duplicateByTitle.rows[0],
           duplicate: true,
           message: "Task already exists for this draft.",
         });
       }
-    }
 
-    // Write to database using the same task schema as the primary task API.
-    const result = await pool.query(
-      `INSERT INTO tasks
+      // Write to database using the same task schema as the primary task API.
+      const result = await pool.query(
+        `INSERT INTO tasks
         (project_id, title, description, status, priority, assigned_to, metadata, created_by)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING *`,
-      [
-        projectId,
-        draft.title,
-        draft.description || "",
-        draft.status || "todo",
-        normalizePriority(draft.priority),
-        assignedTo,
-        metadata,
-        req.user.id,
-      ],
-    );
+        [
+          projectId,
+          draft.title,
+          draft.description || "",
+          draft.status || "todo",
+          normalizePriority(draft.priority),
+          assignedTo,
+          metadata,
+          req.user.id,
+        ],
+      );
 
-    const newTask = result.rows[0];
+      const newTask = result.rows[0];
 
-    const full = await pool.query(
-      `
+      const full = await pool.query(
+        `
       SELECT t.*, u.full_name AS assignee_name, u.avatar_url AS assignee_avatar
       FROM tasks t
       LEFT JOIN users u ON t.assigned_to = u.id
       WHERE t.id = $1
     `,
-      [newTask.id],
-    );
+        [newTask.id],
+      );
 
-    // Emit event to broker so Team Coordination Agent can log it
-    eventBroker.publish("task.assigned", {
-      taskId: newTask.id,
-      projectId,
-      title: newTask.title,
-      priority: newTask.priority,
-      assignedTo: newTask.assigned_to,
-    });
-
-    await recordProjectEvent({
-      projectId,
-      actorId: req.user.id,
-      eventType: "task.assigned",
-      entityType: "task",
-      entityId: newTask.id,
-      metadata: {
+      // Emit event to broker so Team Coordination Agent can log it
+      eventBroker.publish("task.assigned", {
+        taskId: newTask.id,
+        projectId,
         title: newTask.title,
         priority: newTask.priority,
         assignedTo: newTask.assigned_to,
-      },
-      notification: newTask.assigned_to
-        ? {
-            recipientIds: [newTask.assigned_to],
-            type: "task.assigned",
-            category: "mentions",
-            title: `Task assigned: ${newTask.title}`,
-            body: `${req.user.full_name} assigned you a ${newTask.priority} priority task.`,
-            link: `/projects/${projectId}/tasks`,
-          }
-        : null,
-    });
+      });
 
-    res.status(201).json({ task: full.rows[0] });
-  } catch (err) {
-    console.error("[TaskAgent] Confirm error:", err);
-    res.status(500).json({ error: "Failed to confirm and create task" });
-  }
-});
+      await recordProjectEvent({
+        projectId,
+        actorId: req.user.id,
+        eventType: "task.assigned",
+        entityType: "task",
+        entityId: newTask.id,
+        metadata: {
+          title: newTask.title,
+          priority: newTask.priority,
+          assignedTo: newTask.assigned_to,
+        },
+        notification: newTask.assigned_to
+          ? {
+              recipientIds: [newTask.assigned_to],
+              type: "task.assigned",
+              category: "mentions",
+              title: `Task assigned: ${newTask.title}`,
+              body: `${req.user.full_name} assigned you a ${newTask.priority} priority task.`,
+              link: `/projects/${projectId}/tasks`,
+            }
+          : null,
+      });
+
+      res.status(201).json({ task: full.rows[0] });
+    } catch (err) {
+      console.error("[TaskAgent] Confirm error:", err);
+      res.status(500).json({ error: "Failed to confirm and create task" });
+    }
+  },
+);
 
 // POST /api/agents/task/update-existing - Draft an update for an existing todo task
-router.post("/update-existing", authenticate, requireStudentAgent, async (req, res) => {
-  try {
-    const { request, projectId, provider = null } = req.body;
+router.post(
+  "/update-existing",
+  authenticate,
+  requireStudentAgent,
+  async (req, res) => {
+    try {
+      const { request, projectId, provider = null } = req.body;
 
-    if (!request || !projectId) {
-      return res
-        .status(400)
-        .json({ error: "Request text and projectId are required" });
-    }
-    if (!(await canStudentWorkOnProject(req.user, projectId))) {
-      return res
-        .status(403)
-        .json({ error: "Only assigned students can update tasks" });
-    }
+      if (!request || !projectId) {
+        return res
+          .status(400)
+          .json({ error: "Request text and projectId are required" });
+      }
+      if (!(await canStudentWorkOnProject(req.user, projectId))) {
+        return res
+          .status(403)
+          .json({ error: "Only assigned students can update tasks" });
+      }
 
-    const todoTasks = await getProjectTodoTasks(projectId);
-    if (!todoTasks.length) {
-      return res
-        .status(404)
-        .json({ error: "No todo tasks found for this project." });
-    }
+      const todoTasks = await getProjectTodoTasks(projectId);
+      if (!todoTasks.length) {
+        return res
+          .status(404)
+          .json({ error: "No todo tasks found for this project." });
+      }
 
-    const fallbackDraft = {
-      task_title: extractQuotedTaskTitle(request) || null,
-      assignee_name: /\b(me|myself|self)\b/i.test(request) ? "me" : null,
-      deadline: parseInlineDeadline(request),
-    };
+      const fallbackDraft = {
+        task_title: extractQuotedTaskTitle(request) || null,
+        assignee_name: /\b(me|myself|self)\b/i.test(request) ? "me" : null,
+        deadline: parseInlineDeadline(request),
+      };
 
-    const taskList = todoTasks
-      .map((task) => `- ${task.title} (${task.assignee_name || "Unassigned"})`)
-      .join("\n");
-    const systemPrompt = `You are the CollabAgent Task Update AI.
+      const taskList = todoTasks
+        .map(
+          (task) => `- ${task.title} (${task.assignee_name || "Unassigned"})`,
+        )
+        .join("\n");
+      const systemPrompt = `You are the CollabAgent Task Update AI.
 The user wants to update one existing todo task. Choose exactly one task from the provided task list and extract assignment/deadline changes.
 Return strictly valid JSON with:
 {
@@ -649,64 +803,65 @@ Return strictly valid JSON with:
 }
 If the user did not request an assignee or deadline, use null for that field.`;
 
-    const parsed = await generationService.generateJson(
-      systemPrompt,
-      `Todo tasks:\n${taskList}\n\nUser request:\n${request}`,
-      fallbackDraft,
-      provider,
-    );
-    const requestedTitle = parsed?.task_title || fallbackDraft.task_title;
-    const task =
-      findBestTaskMatch(todoTasks, requestedTitle) ||
-      findImplicitTaskMatch(todoTasks, request, req.user);
+      const parsed = await generationService.generateJson(
+        systemPrompt,
+        `Todo tasks:\n${taskList}\n\nUser request:\n${request}`,
+        fallbackDraft,
+        provider,
+      );
+      const requestedTitle = parsed?.task_title || fallbackDraft.task_title;
+      const task =
+        findBestTaskMatch(todoTasks, requestedTitle) ||
+        findImplicitTaskMatch(todoTasks, request, req.user);
 
-    if (!task) {
-      return res.status(404).json({
-        error: "Could not match the request to an existing todo task.",
+      if (!task) {
+        return res.status(404).json({
+          error: "Could not match the request to an existing todo task.",
+        });
+      }
+
+      const assigneeName = parsed?.assignee_name || fallbackDraft.assignee_name;
+      const deadline = parsed?.deadline || fallbackDraft.deadline || null;
+      const assignedTo = assigneeName
+        ? await resolveAssigneeId(assigneeName, projectId, req.user)
+        : undefined;
+
+      if (assigneeName && !assignedTo) {
+        return res
+          .status(404)
+          .json({ error: `Could not find project member "${assigneeName}".` });
+      }
+      if (!assignedTo && !deadline) {
+        return res.status(400).json({
+          error: "No assignee or deadline change was found in the request.",
+        });
+      }
+
+      const assigneeDisplay = assignedTo
+        ? assigneeName === "me"
+          ? req.user.full_name
+          : assigneeName
+        : task.assignee_name || null;
+
+      res.json({
+        updateDraft: {
+          taskId: task.id,
+          title: task.title,
+          currentAssigneeName: task.assignee_name,
+          currentDeadline: task.deadline,
+          assignee_name: assigneeDisplay,
+          assigned_to: assignedTo || null,
+          deadline,
+        },
+        requires_confirmation: true,
+        message: "Please review and confirm this existing task update.",
       });
+    } catch (err) {
+      console.error("[TaskAgent] Existing task update parse error:", err);
+      res.status(500).json({ error: "Failed to prepare existing task update" });
     }
-
-    const assigneeName = parsed?.assignee_name || fallbackDraft.assignee_name;
-    const deadline = parsed?.deadline || fallbackDraft.deadline || null;
-    const assignedTo = assigneeName
-      ? await resolveAssigneeId(assigneeName, projectId, req.user)
-      : undefined;
-
-    if (assigneeName && !assignedTo) {
-      return res
-        .status(404)
-        .json({ error: `Could not find project member "${assigneeName}".` });
-    }
-    if (!assignedTo && !deadline) {
-      return res.status(400).json({
-        error: "No assignee or deadline change was found in the request.",
-      });
-    }
-
-    const assigneeDisplay = assignedTo
-      ? assigneeName === "me"
-        ? req.user.full_name
-        : assigneeName
-      : task.assignee_name || null;
-
-    res.json({
-      updateDraft: {
-        taskId: task.id,
-        title: task.title,
-        currentAssigneeName: task.assignee_name,
-        currentDeadline: task.deadline,
-        assignee_name: assigneeDisplay,
-        assigned_to: assignedTo || null,
-        deadline,
-      },
-      requires_confirmation: true,
-      message: "Please review and confirm this existing task update.",
-    });
-  } catch (err) {
-    console.error("[TaskAgent] Existing task update parse error:", err);
-    res.status(500).json({ error: "Failed to prepare existing task update" });
-  }
-});
+  },
+);
 
 // POST /api/agents/task/update-existing/confirm - Apply an update to an existing todo task
 router.post(
@@ -819,17 +974,21 @@ router.post(
 );
 
 // GET /api/agents/task/prioritized - Get tasks ranked by priority
-router.get("/prioritized", authenticate, requireStudentAgent, async (req, res) => {
-  try {
-    const { projectId } = req.query;
+router.get(
+  "/prioritized",
+  authenticate,
+  requireStudentAgent,
+  async (req, res) => {
+    try {
+      const { projectId } = req.query;
 
-    if (!projectId) {
-      return res.status(400).json({ error: "projectId is required" });
-    }
+      if (!projectId) {
+        return res.status(400).json({ error: "projectId is required" });
+      }
 
-    // Simple priority sorting logic
-    const result = await pool.query(
-      `SELECT * FROM tasks 
+      // Simple priority sorting logic
+      const result = await pool.query(
+        `SELECT * FROM tasks 
        WHERE project_id = $1 
        ORDER BY 
          CASE priority 
@@ -840,15 +999,16 @@ router.get("/prioritized", authenticate, requireStudentAgent, async (req, res) =
            ELSE 5 
          END, 
          created_at DESC`,
-      [projectId],
-    );
+        [projectId],
+      );
 
-    res.json(result.rows);
-  } catch (err) {
-    console.error("[TaskAgent] Prioritized error:", err);
-    res.status(500).json({ error: "Failed to fetch prioritized tasks" });
-  }
-});
+      res.json(result.rows);
+    } catch (err) {
+      console.error("[TaskAgent] Prioritized error:", err);
+      res.status(500).json({ error: "Failed to fetch prioritized tasks" });
+    }
+  },
+);
 
 router._test = {
   buildDuplicateTaskMetadataFilter,

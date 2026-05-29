@@ -1,6 +1,20 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
-import { Settings } from "lucide-react";
+import {
+  BarChart3,
+  Bot,
+  CalendarDays,
+  ClipboardList,
+  FileText,
+  FolderOpen,
+  Home,
+  LogOut,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Settings,
+  Sparkles,
+  Users,
+} from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import NotificationBell from "./NotificationBell";
 
@@ -14,65 +28,68 @@ export default function Sidebar({
   const [menuOpen, setMenuOpen] = useState(false);
 
   const globalItems = [
-    { label: "Home", icon: "🏠", href: "/dashboard" },
-    { label: "Projects", icon: "📁", href: "/projects" },
+    { label: "Home", icon: Home, href: "/dashboard" },
+    { label: "Projects", icon: FolderOpen, href: "/projects" },
   ];
 
   const contextItems = [];
   if (projectId) {
     contextItems.push({
       label: "Overview",
-      icon: "📊",
+      icon: BarChart3,
       href: `/projects/${projectId}`,
     });
     contextItems.push({
       label: "Task Board",
-      icon: "📋",
+      icon: ClipboardList,
       href: `/projects/${projectId}/tasks`,
     });
     contextItems.push({
       label: "Timeline",
-      icon: "🗓️",
+      icon: CalendarDays,
       href: `/projects/${projectId}/timeline`,
     });
     contextItems.push({
       label: "Team Hub",
-      icon: "👥",
+      icon: Users,
       href: `/projects/${projectId}/team`,
     });
     contextItems.push({
       label: "AI Workbench",
-      icon: "✨",
+      icon: Sparkles,
       href: `/projects/${projectId}/ai`,
     });
     contextItems.push({
       label: "Documents",
-      icon: "📄",
+      icon: FileText,
       href: `/projects/${projectId}/documents`,
     });
     contextItems.push({
       label: "Agent Logs",
-      icon: "🤖",
+      icon: Bot,
       href: `/projects/${projectId}/agents`,
     });
-  } else {
-    contextItems.push({ label: "Task Board", icon: "📋", href: "/tasks" });
   }
 
   const renderItem = (item) => {
     const active = activePath === item.href;
+    const Icon = item.icon;
     return (
       <Link
         key={item.label}
         to={item.href}
         title={isCollapsed ? item.label : undefined}
-        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${
+        className={`flex items-center rounded-xl text-sm font-medium transition-colors ${
           active
             ? "bg-[#d6e0f1] text-[#003fb1]"
             : "text-[#434654] hover:bg-[#f3f4f5]"
+        } ${
+          isCollapsed
+            ? "mx-auto h-11 w-11 justify-center p-0"
+            : "w-full gap-3 px-3 py-2.5"
         }`}
       >
-        <span className="text-lg">{item.icon}</span>
+        <Icon className="h-5 w-5 shrink-0" strokeWidth={2} />
         {!isCollapsed && (
           <span className="whitespace-nowrap">{item.label}</span>
         )}
@@ -125,7 +142,7 @@ export default function Sidebar({
           <div className="space-y-1">
             {!isCollapsed && (
               <div className="px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-[#737686]">
-                {projectId ? "Project" : "Tools"}
+                {projectId ? "Project" : null}
               </div>
             )}
             {contextItems.map(renderItem)}
@@ -149,7 +166,12 @@ export default function Sidebar({
               </div>
             )}
           </div>
-          <NotificationBell compact={isCollapsed} align="left" vertical="up" />
+          <NotificationBell
+            compact={isCollapsed}
+            align="left"
+            vertical="up"
+            className={isCollapsed ? "mx-auto" : ""}
+          />
           <button
             type="button"
             onClick={() => {
@@ -157,7 +179,7 @@ export default function Sidebar({
             }}
             className={`h-9 flex items-center rounded-lg border border-[#e1e3e4] text-[#434654] hover:bg-[#f3f4f5] transition-colors ${
               isCollapsed
-                ? "w-9 justify-center"
+                ? "mx-auto h-11 w-11 justify-center rounded-xl"
                 : "w-full justify-start px-3 gap-3 border-transparent bg-transparent"
             }`}
             title="Settings"
@@ -168,22 +190,10 @@ export default function Sidebar({
           <button
             onClick={handleLogout}
             title={isCollapsed ? "Sign Out" : undefined}
-            className={`h-9 flex items-center justify-center text-xs font-semibold text-[#ba1a1a] border border-[#e1e3e4] rounded-lg hover:bg-[#ffdad6] transition-colors ${isCollapsed ? "px-0 w-9" : "w-full"}`}
+            className={`h-9 flex items-center justify-center text-xs font-semibold text-[#ba1a1a] border border-[#e1e3e4] rounded-lg hover:bg-[#ffdad6] transition-colors ${isCollapsed ? "mx-auto h-11 w-11 rounded-xl px-0" : "w-full"}`}
           >
             {isCollapsed ? (
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
-                />
-              </svg>
+              <LogOut className="h-5 w-5" strokeWidth={2} />
             ) : (
               "Sign Out"
             )}
@@ -193,21 +203,14 @@ export default function Sidebar({
         {/* Collapse Toggle Button */}
         <button
           onClick={() => setIsCollapsed(!isCollapsed)}
-          className="absolute -right-3 top-20 w-6 h-6 bg-white border border-[#e1e3e4] rounded-full flex items-center justify-center text-slate-400 hover:text-[#003fb1] shadow-sm z-40 transition-transform"
+          className="absolute -right-4 top-20 grid h-8 w-8 place-items-center rounded-lg border border-[#d8dde6] bg-white text-[#596170] shadow-sm transition-colors hover:text-[#003fb1] focus:outline-none focus:ring-2 focus:ring-[#0b47c2]/30"
+          aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
-          <svg
-            className={`w-3 h-3 transform transition-transform ${isCollapsed ? "rotate-180" : ""}`}
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2.5}
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M15 19l-7-7 7-7"
-            />
-          </svg>
+          {isCollapsed ? (
+            <PanelLeftOpen className="h-4 w-4" strokeWidth={2} />
+          ) : (
+            <PanelLeftClose className="h-4 w-4" strokeWidth={2} />
+          )}
         </button>
       </aside>
 

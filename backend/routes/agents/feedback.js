@@ -14,6 +14,21 @@ function requireAdvisorAgent(req, res, next) {
   next();
 }
 
+async function canReadProject(user, projectId) {
+  const result = await pool.query(
+    `SELECT 1
+     FROM projects p
+     WHERE p.id = $1
+       AND (
+         p.owner_id = $2
+         OR p.id IN (SELECT project_id FROM project_members WHERE user_id = $2)
+         OR p.visibility = 'public'
+       )`,
+    [projectId, user.id],
+  );
+  return result.rows.length > 0;
+}
+
 // POST /api/agents/feedback/submit - Submit feedback and generate suggested responses
 router.post('/submit', authenticate, requireAdvisorAgent, async (req, res) => {
   try {
@@ -73,7 +88,12 @@ Format strictly as JSON.`;
         category: 'updates',
         title: 'New advisor feedback',
         body: structuredSummary || body.slice(0, 180),
-        link: `/projects/${projectId}/ai`,
+        link: `/projects/${projectId}/team?feedbackId=${newFeedback.id}`,
+        metadata: {
+          feedbackId: newFeedback.id,
+          severity: newFeedback.severity,
+          category: newFeedback.category,
+        },
       },
     });
 
@@ -89,12 +109,15 @@ Format strictly as JSON.`;
 });
 
 // GET /api/agents/feedback/open - Get unresolved feedback
-router.get('/open', authenticate, requireAdvisorAgent, async (req, res) => {
+router.get('/open', authenticate, async (req, res) => {
   try {
     const { projectId } = req.query;
     
     if (!projectId) {
       return res.status(400).json({ error: 'projectId is required' });
+    }
+    if (!(await canReadProject(req.user, projectId))) {
+      return res.status(404).json({ error: 'Project not found' });
     }
 
     const result = await pool.query(
@@ -117,6 +140,29 @@ router.get('/open', authenticate, requireAdvisorAgent, async (req, res) => {
   } catch (err) {
     console.error('[FeedbackAgent] Open feedback error:', err);
     res.status(500).json({ error: 'Failed to fetch open feedback' });
+  }
+});
+
+// GET /api/agents/feedback/:id - Read one feedback item for project members
+router.get('/:id', authenticate, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT f.*, u.full_name as advisor_name
+       FROM feedback f
+       LEFT JOIN users u ON f.advisor_id = u.id
+       WHERE f.id = $1`,
+      [req.params.id]
+    );
+
+    const feedback = result.rows[0];
+    if (!feedback || !(await canReadProject(req.user, feedback.project_id))) {
+      return res.status(404).json({ error: 'Feedback not found' });
+    }
+
+    res.json({ feedback });
+  } catch (err) {
+    console.error('[FeedbackAgent] Feedback detail error:', err);
+    res.status(500).json({ error: 'Failed to fetch feedback' });
   }
 });
 

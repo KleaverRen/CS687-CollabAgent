@@ -13,6 +13,7 @@ const typeLabels = {
   "deadline.urgent": "Deadline",
   "deadline.today": "Deadline",
   "deadline.overdue": "Overdue",
+  "feedback.submitted": "Feedback",
 };
 
 function formatTime(value) {
@@ -26,10 +27,20 @@ function formatTime(value) {
   return `${Math.floor(hours / 24)}d`;
 }
 
+function getNotificationActionUrl(notification) {
+  if (notification.type === "feedback.submitted" && notification.project_id) {
+    const feedbackId = notification.metadata?.feedbackId;
+    const query = feedbackId ? `?feedbackId=${feedbackId}` : "";
+    return `/projects/${notification.project_id}/team${query}`;
+  }
+  return notification.action_url;
+}
+
 export default function NotificationBell({
   compact = false,
   align = "right",
   vertical = "down",
+  className = "",
 }) {
   const navigate = useNavigate();
   const { loading, markAllRead, markRead, notifications, unreadCount } =
@@ -51,14 +62,14 @@ export default function NotificationBell({
   }, []);
 
   return (
-    <div className="relative" ref={containerRef}>
+    <div className={clsx("relative", className)} ref={containerRef}>
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
         className={clsx(
           "flex h-9 items-center text-[#434654] hover:bg-[#f3f4f5] transition-colors",
           compact
-            ? "w-9 justify-center rounded-lg border border-[#e1e3e4] bg-white"
+            ? "h-11 w-11 justify-center rounded-xl border border-[#e1e3e4] bg-white"
             : "w-full gap-3 px-3 justify-start rounded-lg",
         )}
         title="Notifications"
@@ -123,6 +134,7 @@ export default function NotificationBell({
             ) : (
               notifications.map((notification) => {
                 const unread = !notification.is_read;
+                const actionUrl = getNotificationActionUrl(notification);
                 const safeContent = (
                   <div
                     className={clsx(
@@ -164,16 +176,16 @@ export default function NotificationBell({
                     }
                   }
                   setOpen(false);
-                  if (notification.action_url) {
-                    navigate(notification.action_url);
+                  if (actionUrl) {
+                    navigate(actionUrl);
                   }
                 };
 
-                if (notification.action_url) {
+                if (actionUrl) {
                   return (
                     <Link
                       key={notification.id}
-                      to={notification.action_url}
+                      to={actionUrl}
                       onClick={handleNotifyClick}
                     >
                       {safeContent}

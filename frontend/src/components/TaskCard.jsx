@@ -45,8 +45,14 @@ function DeadlineBadge({ deadline, status }) {
   );
 }
 
-export default function TaskCard({ task, onOpen, dragging, readOnly = false }) {
-  const { updateTask, deleteTask } = useTask();
+export default function TaskCard({
+  task,
+  onOpen,
+  onDelete,
+  dragging,
+  readOnly = false,
+}) {
+  const { updateTask } = useTask();
   const [menuOpen, setMenuOpen] = useState(false);
 
   const p = PRIORITY_CONFIG[task.priority] || PRIORITY_CONFIG.medium;
@@ -156,7 +162,7 @@ export default function TaskCard({ task, onOpen, dragging, readOnly = false }) {
           ))}
           <hr className="my-1 border-[#e1e3e4]" />
           <button className="w-full text-left px-3 py-2 text-xs text-red-500 hover:bg-red-50"
-            onClick={() => { deleteTask(task.id); setMenuOpen(false); }}>
+            onClick={() => { onDelete?.(task); setMenuOpen(false); }}>
             Delete task
           </button>
         </div>

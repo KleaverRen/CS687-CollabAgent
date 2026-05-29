@@ -6,6 +6,7 @@ import AISuggestionDrawer from '../components/AISuggestionDrawer';
 import DependencyGraph from '../components/DependencyGraph';
 import AffinityScorer from '../components/AffinityScorer';
 import Layout from '../components/Layout';
+import DeleteConfirmationModal from '../components/DeleteConfirmationModal';
 import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import clsx from 'clsx';
@@ -195,7 +196,14 @@ function TaskDetailModal({ task, onClose, readOnly = false }) {
 }
 
 // ─── Kanban Column ────────────────────────────────────────────────────────────
-function KanbanColumn({ col, tasks, onOpenTask, onDrop, readOnly = false }) {
+function KanbanColumn({
+  col,
+  tasks,
+  onOpenTask,
+  onDeleteTask,
+  onDrop,
+  readOnly = false,
+}) {
   const [dragOver, setDragOver] = useState(false);
 
   return (
@@ -217,7 +225,12 @@ function KanbanColumn({ col, tasks, onOpenTask, onDrop, readOnly = false }) {
       <div className={clsx('flex-1', 'px-3', 'pb-4', 'space-y-3', 'overflow-y-auto')} style={{ maxHeight: '65vh' }}>
         {tasks.map((task) => (
           <div key={task.id} draggable={!readOnly} onDragStart={(e) => { if (!readOnly) e.dataTransfer.setData('taskId', task.id); }}>
-            <TaskCard task={task} onOpen={onOpenTask} readOnly={readOnly} />
+            <TaskCard
+              task={task}
+              onOpen={onOpenTask}
+              onDelete={onDeleteTask}
+              readOnly={readOnly}
+            />
           </div>
         ))}
         {tasks.length === 0 && (
@@ -233,10 +246,12 @@ function KanbanColumn({ col, tasks, onOpenTask, onDrop, readOnly = false }) {
 // ─── Inner board (has access to TaskContext) ──────────────────────────────────
 function BoardInner({ projects, selectedProjectId, setSelectedProjectId, selectedProject, scopedProject = false }) {
   const { user } = useAuth();
-  const { tasks, loading, loadTasks, updateTask, runAI, aiLoading, suggestions, isDemo } = useTask();
+  const { tasks, loading, loadTasks, updateTask, deleteTask, runAI, aiLoading, suggestions, isDemo } = useTask();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [showNewTask, setShowNewTask] = useState(false);
   const [selectedTask, setSelectedTask] = useState(null);
+  const [taskPendingDelete, setTaskPendingDelete] = useState(null);
+  const [deletingTask, setDeletingTask] = useState(false);
   const [showGraph, setShowGraph] = useState(false);
   const isArchived = selectedProject?.status === 'archived';
   const readOnly = !isDemo && (isArchived || user?.role !== 'student');
@@ -254,6 +269,14 @@ function BoardInner({ projects, selectedProjectId, setSelectedProjectId, selecte
   const handleRunAI = async () => {
     setDrawerOpen(true);
     await runAI(selectedProjectId);
+  };
+
+  const handleConfirmDeleteTask = async () => {
+    if (!taskPendingDelete) return;
+    setDeletingTask(true);
+    await deleteTask(taskPendingDelete.id);
+    setDeletingTask(false);
+    setTaskPendingDelete(null);
   };
 
   const criticalCount = suggestions.filter((s) => s.severity === 'critical').length;
@@ -368,6 +391,7 @@ function BoardInner({ projects, selectedProjectId, setSelectedProjectId, selecte
                 col={col}
                 tasks={tasks.filter((t) => t.status === col.id)}
                 onOpenTask={setSelectedTask}
+                onDeleteTask={setTaskPendingDelete}
                 onDrop={handleDrop}
                 readOnly={readOnly}
               />
@@ -395,6 +419,18 @@ function BoardInner({ projects, selectedProjectId, setSelectedProjectId, selecte
       {selectedTask && (
         <TaskDetailModal task={selectedTask} readOnly={readOnly} onClose={() => setSelectedTask(null)} />
       )}
+      <DeleteConfirmationModal
+        open={Boolean(taskPendingDelete)}
+        title="Delete task?"
+        message="This will permanently remove the task from the board."
+        itemName={taskPendingDelete?.title}
+        confirmLabel="Delete Task"
+        loading={deletingTask}
+        onCancel={() => {
+          if (!deletingTask) setTaskPendingDelete(null);
+        }}
+        onConfirm={handleConfirmDeleteTask}
+      />
     </div>
   );
 }

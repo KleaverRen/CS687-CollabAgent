@@ -227,6 +227,32 @@ const createTables = async () => {
       );
     `);
 
+    // Persistent AI Workbench chat sessions
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS ai_workbench_sessions (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        title VARCHAR(255) NOT NULL DEFAULT 'New chat',
+        active_agent VARCHAR(64) NOT NULL DEFAULT 'rag',
+        metadata JSONB DEFAULT '{}',
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS ai_workbench_messages (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        session_id UUID NOT NULL REFERENCES ai_workbench_sessions(id) ON DELETE CASCADE,
+        sender VARCHAR(32) NOT NULL CHECK (sender IN ('user', 'agent')),
+        agent_id VARCHAR(64),
+        text TEXT NOT NULL,
+        metadata JSONB DEFAULT '{}',
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+
     // Updated_at trigger function
     await client.query(`
       CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -239,7 +265,7 @@ const createTables = async () => {
     `);
 
     // Apply updated_at triggers
-    for (const table of ['users', 'projects']) {
+    for (const table of ['users', 'projects', 'ai_workbench_sessions']) {
       await client.query(`
         DROP TRIGGER IF EXISTS update_${table}_updated_at ON ${table};
         CREATE TRIGGER update_${table}_updated_at
@@ -260,6 +286,8 @@ const createTables = async () => {
       CREATE INDEX IF NOT EXISTS idx_activity_project_created ON activity_log(project_id, created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_activity_actor_created ON activity_log(actor_id, created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_notifications_user_created ON notifications(user_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_ai_workbench_sessions_user_project ON ai_workbench_sessions(user_id, project_id, updated_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_ai_workbench_messages_session_created ON ai_workbench_messages(session_id, created_at ASC);
     `);
 
     await client.query(`

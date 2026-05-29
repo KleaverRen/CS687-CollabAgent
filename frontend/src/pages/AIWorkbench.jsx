@@ -13,23 +13,23 @@ import {
   Bot,
   Check,
   CheckCircle2,
-  ClipboardList,
   FileText,
   Image,
   Loader2,
   Mic,
-  MoreHorizontal,
   Paperclip,
+  Plus,
   Search,
   Send,
   Sparkles,
+  Trash2,
   Upload,
   Users,
-  Wand2,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import ReactMarkdown from "react-markdown";
 import Layout from "../components/Layout";
+import DeleteConfirmationModal from "../components/DeleteConfirmationModal";
 import { useAuth } from "../context/AuthContext";
 import api from "../utils/api";
 
@@ -97,17 +97,6 @@ const fieldClass =
 const labelClass =
   "mb-1.5 block text-xs font-bold uppercase tracking-[0.12em] text-[#4b5563]";
 
-const statusClass = {
-  Analyzing: "bg-[#1f5de8] text-white",
-  Searching: "bg-[#84efbd] text-[#005438]",
-  Idle: "bg-[#dfe3e8] text-[#434654]",
-  Ready: "bg-[#e8ddff] text-[#4f2ca1]",
-  Running: "bg-[#1f5de8] text-white",
-  Queued: "bg-[#fff3c4] text-[#6b4d00]",
-  Draft: "bg-[#dbeafe] text-[#003fb1]",
-  Complete: "bg-[#84efbd] text-[#005438]",
-};
-
 const toneClass = {
   blue: "bg-[#1f5de8] text-white",
   emerald: "bg-[#005438] text-white",
@@ -128,15 +117,37 @@ const actionLabels = {
 
 const workbenchStateVersion = 1;
 
-const getSessionGreeting = () => [
-  {
-    id: `agent-${Date.now()}`,
-    sender: "agent",
-    agentId: "rag",
-    timestamp: new Date().toISOString(),
-    text: "Fresh AI agent session initialized. Select an agent or send a prompt to start a new workbench run.",
-  },
-];
+const getSessionGreeting = () => [];
+
+function taskDraftSummary(draft) {
+  if (!draft) return "No task draft was generated.";
+  const parts = [
+    `Title: ${draft.title || "Untitled task"}`,
+    draft.description ? `Description: ${draft.description}` : null,
+    draft.priority ? `Priority: ${draft.priority}` : null,
+    draft.assignee_name ? `Assignee: ${draft.assignee_name}` : null,
+    draft.complexity ? `Complexity: ${draft.complexity}` : null,
+    draft.blocker ? `Potential blocker: ${draft.blocker}` : null,
+  ].filter(Boolean);
+  return parts.join("\n");
+}
+
+function taskDraftsSummary(drafts) {
+  if (!Array.isArray(drafts) || !drafts.length) {
+    return "No task drafts were generated.";
+  }
+  return drafts
+    .map((draft, index) => `${index + 1}. ${taskDraftSummary(draft)}`)
+    .join("\n\n");
+}
+
+function taskDraftKey(draft, assignToSelf = false) {
+  return [
+    String(draft?.title || "").trim().toLowerCase(),
+    String(draft?.priority || "").trim().toLowerCase(),
+    String(assignToSelf ? "me" : draft?.assignee_name || "").trim().toLowerCase(),
+  ].join("|");
+}
 
 class WorkbenchErrorBoundary extends React.Component {
   constructor(props) {
@@ -314,10 +325,16 @@ export default function AIWorkbench() {
   const { user } = useAuth();
   const sessionIdRef = useRef("");
   const restoredProjectRef = useRef("");
+  const confirmingTaskKeysRef = useRef(new Set());
   const [activeTab, setActiveTab] = useState("rag");
   const [loadingAction, setLoadingAction] = useState("");
   const [selectedProvider, setSelectedProvider] = useState("auto");
   const [searchTerm, setSearchTerm] = useState("");
+  const [chatSessions, setChatSessions] = useState([]);
+  const [activeChatSessionId, setActiveChatSessionId] = useState(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [deletingSessionId, setDeletingSessionId] = useState(null);
+  const [sessionPendingDelete, setSessionPendingDelete] = useState(null);
   const [ingestionEvents, setIngestionEvents] = useState([]);
   const [chatMessages, setChatMessages] = useState(() => getSessionGreeting());
 
@@ -362,100 +379,6 @@ export default function AIWorkbench() {
   );
   const providerValue = selectedProvider === "auto" ? null : selectedProvider;
 
-  const agentDescriptions = useMemo(
-    () => ({
-      rag: ragAnswer
-        ? "Answer ready from indexed knowledge."
-        : docTitle || docContent
-          ? "Document ready to index."
-          : "Indexing new research material.",
-      task: taskUpdateDraft
-        ? "Existing task update prepared."
-        : taskDrafts.length
-          ? `${taskDrafts.length} task drafts prepared.`
-          : taskDraft
-            ? "Task draft prepared for confirmation."
-            : taskRequest
-              ? "Parsing natural language task request."
-              : "Refining project milestones for Phase 2.",
-      meeting: meetingResult
-        ? "Action items extracted from the latest sync."
-        : transcript
-          ? "Reviewing meeting transcript."
-          : "Ready to align member schedules.",
-      feedback: feedbackResult
-        ? "Advisor response template prepared."
-        : feedbackBody
-          ? "Analyzing advisor feedback."
-          : "Awaiting draft submission.",
-      progress: progressReport
-        ? "Weekly advisor report generated."
-        : progressPrompt
-          ? "Report instructions ready."
-          : "Monitoring progress signals.",
-    }),
-    [
-      docContent,
-      docTitle,
-      feedbackBody,
-      feedbackResult,
-      meetingResult,
-      progressPrompt,
-      progressReport,
-      ragAnswer,
-      taskDraft,
-      taskDrafts.length,
-      taskRequest,
-      taskUpdateDraft,
-      transcript,
-    ],
-  );
-
-  const agentStatuses = useMemo(() => {
-    const statuses = {
-      rag: ragAnswer
-        ? "Complete"
-        : docTitle || docContent || ragQuery
-          ? "Ready"
-          : "Idle",
-      task:
-        taskUpdateDraft || taskDraft || taskDrafts.length
-          ? "Draft"
-          : taskRequest
-            ? "Ready"
-            : "Idle",
-      meeting: meetingResult ? "Complete" : transcript ? "Ready" : "Idle",
-      feedback: feedbackResult ? "Complete" : feedbackBody ? "Ready" : "Idle",
-      progress: progressReport ? "Complete" : progressPrompt ? "Ready" : "Idle",
-    };
-
-    if (loadingAction === "ingest") statuses.rag = "Queued";
-    if (loadingAction === "rag") statuses.rag = "Running";
-    if (loadingAction === "task" || loadingAction === "confirm-task")
-      statuses.task = "Running";
-    if (loadingAction === "meeting") statuses.meeting = "Running";
-    if (loadingAction === "feedback") statuses.feedback = "Running";
-    if (loadingAction === "progress") statuses.progress = "Running";
-
-    return statuses;
-  }, [
-    docContent,
-    docTitle,
-    feedbackBody,
-    feedbackResult,
-    loadingAction,
-    meetingResult,
-    progressPrompt,
-    progressReport,
-    ragAnswer,
-    ragQuery,
-    taskDraft,
-    taskDrafts.length,
-    taskRequest,
-    taskUpdateDraft,
-    transcript,
-  ]);
-
   const logWorkbenchActivity = useCallback(
     async ({ actionType, status, metadata = {} }) => {
       if (!projectId) return;
@@ -480,6 +403,41 @@ export default function AIWorkbench() {
     [activeAgent.label, projectId, selectedProvider],
   );
 
+  const updateSessionList = useCallback((session) => {
+    if (!session) return;
+    setChatSessions((sessions) => [
+      session,
+      ...sessions.filter((item) => item.id !== session.id),
+    ]);
+  }, []);
+
+  const saveWorkbenchMessage = useCallback(
+    async (message) => {
+      if (!activeChatSessionId) return;
+      try {
+        const { data } = await api.post(
+          `/ai-workbench/sessions/${activeChatSessionId}/messages`,
+          {
+            sender: message.sender,
+            agentId: message.agentId || null,
+            text: message.text,
+            metadata: {
+              clientId: message.id,
+              ...(message.metadata || {}),
+            },
+          },
+        );
+        updateSessionList({
+          ...data.session,
+          last_message: data.message?.text || message.text,
+        });
+      } catch (err) {
+        console.error("[AIWorkbench] Failed to save chat message:", err);
+      }
+    },
+    [activeChatSessionId, updateSessionList],
+  );
+
   useEffect(() => {
     sessionIdRef.current = `aiw-${projectId || "global"}-${Date.now()}`;
     restoredProjectRef.current = "";
@@ -494,7 +452,9 @@ export default function AIWorkbench() {
     }
 
     setActiveTab(
-      allowedTabIds.has(nextState?.activeTab) ? nextState.activeTab : defaultTabId,
+      allowedTabIds.has(nextState?.activeTab)
+        ? nextState.activeTab
+        : defaultTabId,
     );
     setLoadingAction("");
     setSelectedProvider(nextState?.selectedProvider || "auto");
@@ -547,7 +507,9 @@ export default function AIWorkbench() {
             sessionId: sessionIdRef.current,
             userId: user.id,
             role: user.role,
-            activeAgent: "Knowledge Agent",
+            activeAgent:
+              tabs.find((tab) => tab.id === defaultTabId)?.label ||
+              "Knowledge Agent",
             provider: "auto",
           },
         })
@@ -565,6 +527,197 @@ export default function AIWorkbench() {
       setActiveTab(defaultTabId);
     }
   }, [activeTab, allowedTabIds, defaultTabId]);
+
+  const resetWorkbenchOutputs = useCallback(() => {
+    setRagAnswer(null);
+    setTaskDraft(null);
+    setTaskDrafts([]);
+    setTaskUpdateDraft(null);
+    setMeetingResult(null);
+    setCreatingMeetingActionIds([]);
+    setFeedbackResult(null);
+    setProgressReport("");
+    setIsEditingReport(false);
+  }, []);
+
+  const mapStoredMessage = useCallback(
+    (message) => ({
+      id: message.id,
+      sender: message.sender,
+      agentId: message.agent_id || undefined,
+      timestamp: message.created_at,
+      text: message.text,
+      metadata: message.metadata || {},
+      stream: false,
+    }),
+    [],
+  );
+
+  const restoreOutputsFromMessages = useCallback(
+    (messages) => {
+      resetWorkbenchOutputs();
+
+      messages.forEach((message) => {
+        const metadata = message.metadata || {};
+        if (metadata.workflow === "rag" && metadata.answer) {
+          setRagAnswer({
+            answer: metadata.answer,
+            sources: metadata.sources || [],
+          });
+        }
+        if (metadata.workflow === "task") {
+          if (metadata.draftType === "task_list" && Array.isArray(metadata.drafts)) {
+            setTaskDraft(null);
+            setTaskUpdateDraft(null);
+            setTaskDrafts(metadata.drafts);
+          }
+          if (metadata.draftType === "single_task" && metadata.draft) {
+            setTaskDraft(metadata.draft);
+            setTaskDrafts([]);
+            setTaskUpdateDraft(null);
+          }
+          if (metadata.draftType === "task_update" && metadata.updateDraft) {
+            setTaskUpdateDraft(metadata.updateDraft);
+            setTaskDraft(null);
+            setTaskDrafts([]);
+          }
+        }
+        if (metadata.workflow === "meeting" && metadata.meetingResult) {
+          setMeetingResult(metadata.meetingResult);
+        }
+        if (metadata.workflow === "feedback" && metadata.feedbackResult) {
+          setFeedbackResult(metadata.feedbackResult);
+        }
+        if (metadata.workflow === "progress" && metadata.report) {
+          setProgressReport(metadata.report);
+        }
+      });
+    },
+    [resetWorkbenchOutputs],
+  );
+
+  const loadChatMessages = useCallback(
+    async (sessionId) => {
+      if (!sessionId) return;
+      try {
+        const { data } = await api.get(
+          `/ai-workbench/sessions/${sessionId}/messages`,
+        );
+        const storedMessages = (data.messages || []).map(mapStoredMessage);
+        setChatMessages(
+          storedMessages.length ? storedMessages : getSessionGreeting(),
+        );
+        restoreOutputsFromMessages(storedMessages);
+        if (allowedTabIds.has(data.session?.active_agent)) {
+          setActiveTab(data.session.active_agent);
+        }
+      } catch (err) {
+        console.error("[AIWorkbench] Failed to load chat messages:", err);
+        toast.error("Failed to load chat history.");
+      }
+    },
+    [allowedTabIds, mapStoredMessage, restoreOutputsFromMessages],
+  );
+
+  const createChatSession = useCallback(
+    async ({ activate = true } = {}) => {
+      if (!projectId) return null;
+      const { data } = await api.post("/ai-workbench/sessions", {
+        projectId,
+        activeAgent: defaultTabId,
+        title: "New chat",
+      });
+      updateSessionList(data.session);
+      if (activate) {
+        setActiveChatSessionId(data.session.id);
+        setActiveTab(defaultTabId);
+        resetWorkbenchOutputs();
+        setChatMessages(getSessionGreeting());
+      }
+      return data.session;
+    },
+    [defaultTabId, projectId, resetWorkbenchOutputs, updateSessionList],
+  );
+
+  const deleteChatSession = useCallback(
+    async (sessionId) => {
+      if (!sessionId || deletingSessionId) return;
+
+      setDeletingSessionId(sessionId);
+      try {
+        await api.delete(`/ai-workbench/sessions/${sessionId}`);
+
+        const remainingSessions = chatSessions.filter(
+          (item) => item.id !== sessionId,
+        );
+        setChatSessions(remainingSessions);
+
+        if (activeChatSessionId === sessionId) {
+          const nextSession = remainingSessions[0];
+          if (nextSession) {
+            resetWorkbenchOutputs();
+            setActiveChatSessionId(nextSession.id);
+          } else {
+            await createChatSession({ activate: true });
+          }
+        }
+
+        toast.success("Chat deleted.");
+        setSessionPendingDelete(null);
+      } catch (err) {
+        console.error("[AIWorkbench] Failed to delete chat:", err);
+        toast.error(err.response?.data?.error || "Failed to delete chat.");
+      } finally {
+        setDeletingSessionId(null);
+      }
+    },
+    [
+      activeChatSessionId,
+      chatSessions,
+      createChatSession,
+      deletingSessionId,
+      resetWorkbenchOutputs,
+    ],
+  );
+
+  useEffect(() => {
+    if (!projectId || !user?.id) return undefined;
+
+    let cancelled = false;
+    setHistoryLoading(true);
+
+    (async () => {
+      try {
+        const { data } = await api.get(
+          `/ai-workbench/sessions?projectId=${encodeURIComponent(projectId)}`,
+        );
+        if (cancelled) return;
+
+        const sessions = data.sessions || [];
+        setChatSessions(sessions);
+        if (sessions.length) {
+          setActiveChatSessionId(sessions[0].id);
+        } else {
+          await createChatSession({ activate: true });
+        }
+      } catch (err) {
+        console.error("[AIWorkbench] Failed to load chat sessions:", err);
+        if (!cancelled) toast.error("Failed to load chat history.");
+      } finally {
+        if (!cancelled) setHistoryLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [createChatSession, projectId, user?.id]);
+
+  useEffect(() => {
+    if (activeChatSessionId) {
+      loadChatMessages(activeChatSessionId);
+    }
+  }, [activeChatSessionId, loadChatMessages]);
 
   useEffect(() => {
     if (restoredProjectRef.current !== (projectId || "global")) return;
@@ -676,29 +829,28 @@ export default function AIWorkbench() {
   }, [projectId]);
 
   const appendUserMessage = (text) => {
-    setChatMessages((messages) => [
-      ...messages,
-      {
-        id: `user-${Date.now()}`,
-        sender: "user",
-        timestamp: new Date().toISOString(),
-        text,
-      },
-    ]);
+    const message = {
+      id: `user-${Date.now()}`,
+      sender: "user",
+      timestamp: new Date().toISOString(),
+      text,
+    };
+    setChatMessages((messages) => [...messages, message]);
+    saveWorkbenchMessage(message);
   };
 
-  const appendAgentMessage = (text, agentId = activeTab) => {
-    setChatMessages((messages) => [
-      ...messages,
-      {
-        id: `agent-${Date.now()}`,
-        sender: "agent",
-        agentId,
-        timestamp: new Date().toISOString(),
-        text,
-        stream: true,
-      },
-    ]);
+  const appendAgentMessage = (text, agentId = activeTab, metadata = {}) => {
+    const message = {
+      id: `agent-${Date.now()}`,
+      sender: "agent",
+      agentId,
+      timestamp: new Date().toISOString(),
+      text,
+      metadata,
+      stream: true,
+    };
+    setChatMessages((messages) => [...messages, message]);
+    saveWorkbenchMessage(message);
   };
 
   const handleToolSwitch = (nextTab) => {
@@ -725,15 +877,24 @@ export default function AIWorkbench() {
     try {
       const result = await action();
       if (result === false) return false;
+      const resultMessage =
+        result && typeof result === "object" && result.message
+          ? result.message
+          : `${activeAgent.label} completed ${actionType.toLowerCase()}.`;
       await logWorkbenchActivity({
         actionType: "Agent Response",
         status: "success",
-        metadata: { workflow: key, responseType: actionType },
+        metadata: {
+          workflow: key,
+          responseType: actionType,
+          ...(result && typeof result === "object" ? result.metadata || {} : {}),
+        },
       });
-      appendAgentMessage(
-        `${activeAgent.label} completed ${actionType.toLowerCase()}. Review the generated output below.`,
-        activeTab,
-      );
+      appendAgentMessage(resultMessage, activeTab, {
+        workflow: key,
+        responseType: actionType,
+        ...(result && typeof result === "object" ? result.metadata || {} : {}),
+      });
       return true;
     } catch (err) {
       await logWorkbenchActivity({
@@ -763,9 +924,14 @@ export default function AIWorkbench() {
         content: docContent,
         projectId,
       });
+      const message = `Queued "${docTitle.trim()}" for knowledge indexing.`;
       setDocTitle("");
       setDocContent("");
       toast.success("Document queued for indexing.");
+      return {
+        message,
+        metadata: { documentTitle: docTitle.trim() },
+      };
     });
 
   const askDocuments = () =>
@@ -781,6 +947,14 @@ export default function AIWorkbench() {
         provider: providerValue,
       });
       setRagAnswer(data);
+      return {
+        message: data.answer || "No answer was generated.",
+        metadata: {
+          answer: data.answer || "",
+          sources: data.sources || [],
+          sourceCount: Array.isArray(data.sources) ? data.sources.length : 0,
+        },
+      };
     });
 
   const shouldUpdateExistingTask = (request) => {
@@ -813,7 +987,10 @@ export default function AIWorkbench() {
         setTaskDraft(null);
         setTaskDrafts([]);
         setTaskUpdateDraft(data.updateDraft);
-        return true;
+        return {
+          message: `Prepared task update:\n${taskDraftSummary(data.updateDraft)}`,
+          metadata: { draftType: "task_update", updateDraft: data.updateDraft },
+        };
       }
 
       const { data } = await api.post("/agents/task/parse", {
@@ -825,25 +1002,67 @@ export default function AIWorkbench() {
       if (Array.isArray(data.drafts) && data.drafts.length) {
         setTaskDraft(null);
         setTaskDrafts(data.drafts);
+        return {
+          message: `Generated ${data.drafts.length} task draft${data.drafts.length === 1 ? "" : "s"}:\n${taskDraftsSummary(data.drafts)}`,
+          metadata: {
+            draftType: "task_list",
+            draftCount: data.drafts.length,
+            drafts: data.drafts,
+          },
+        };
       } else {
         setTaskDrafts([]);
         setTaskDraft(data.draft);
+        return {
+          message: `Generated task draft:\n${taskDraftSummary(data.draft)}`,
+          metadata: { draftType: "single_task", draft: data.draft },
+        };
       }
     });
 
-  const confirmTask = (draft, assignToSelf = false) =>
-    runAction("confirm-task", async () => {
-      const { data } = await api.post("/agents/task/confirm", {
-        draft: assignToSelf ? { ...draft, assignee_name: "me" } : draft,
-        projectId,
-        user_confirmed: true,
+  const confirmTask = async (draft, assignToSelf = false) => {
+    if (draft.createdTaskId) return false;
+
+    const key = taskDraftKey(draft, assignToSelf);
+    if (confirmingTaskKeysRef.current.has(key)) return false;
+    confirmingTaskKeysRef.current.add(key);
+
+    try {
+      return await runAction("confirm-task", async () => {
+        const { data } = await api.post("/agents/task/confirm", {
+          draft: assignToSelf ? { ...draft, assignee_name: "me" } : draft,
+          projectId,
+          user_confirmed: true,
+        });
+
+        setTaskDraft((current) =>
+          current && taskDraftKey(current, assignToSelf) === key
+            ? {
+                ...current,
+                createdTaskId: data.task?.id || true,
+                duplicate: !!data.duplicate,
+              }
+            : current,
+        );
+
+        toast.success(
+          data.duplicate
+            ? "Task already exists."
+            : data.task?.assignee_name
+              ? `Task assigned to ${data.task.assignee_name}.`
+              : "Task created.",
+        );
+        return {
+          message: data.duplicate
+            ? `Task already exists: ${data.task?.title || draft.title || "Untitled task"}`
+            : `Created task: ${data.task?.title || draft.title || "Untitled task"}`,
+          metadata: { taskId: data.task?.id, duplicate: !!data.duplicate },
+        };
       });
-      toast.success(
-        data.task?.assignee_name
-          ? `Task assigned to ${data.task.assignee_name}.`
-          : "Task created.",
-      );
-    });
+    } finally {
+      confirmingTaskKeysRef.current.delete(key);
+    }
+  };
 
   const markMeetingActionDraft = (draftId, patch) => {
     setMeetingResult((current) =>
@@ -885,6 +1104,12 @@ export default function AIWorkbench() {
               ? `Task assigned to ${data.task.assignee_name}.`
               : "Task created.",
         );
+        return {
+          message: data.duplicate
+            ? `Meeting action already exists: ${data.task?.title || draft.title || "Untitled task"}`
+            : `Created meeting action: ${data.task?.title || draft.title || "Untitled task"}`,
+          metadata: { taskId: data.task?.id, duplicate: !!data.duplicate },
+        };
       } finally {
         setCreatingMeetingActionIds((ids) =>
           ids.filter((id) => id !== draft.id),
@@ -934,7 +1159,13 @@ export default function AIWorkbench() {
         );
       }
 
-      return created.length > 0;
+      if (created.length === 0) return false;
+      return {
+        message: `Created ${created.length} task${created.length === 1 ? "" : "s"}:\n${created
+          .map((task, index) => `${index + 1}. ${task?.title || "Untitled task"}`)
+          .join("\n")}`,
+        metadata: { createdCount: created.length },
+      };
     });
 
   const confirmTaskUpdate = (updateDraft) =>
@@ -950,6 +1181,10 @@ export default function AIWorkbench() {
           ? `Task updated for ${data.task.assignee_name}.`
           : "Task updated.",
       );
+      return {
+        message: `Updated task: ${data.task?.title || updateDraft.title || "Untitled task"}`,
+        metadata: { taskId: data.task?.id },
+      };
     });
 
   const summarizeMeeting = () =>
@@ -968,6 +1203,18 @@ export default function AIWorkbench() {
         id: item.id || `meeting-action-${Date.now()}-${index}`,
       }));
       setMeetingResult(data);
+      return {
+        message: [
+          data.summary || "Meeting summary generated.",
+          data.actionItemDrafts?.length
+            ? `Action items:\n${taskDraftsSummary(data.actionItemDrafts)}`
+            : "No action items were identified.",
+        ].join("\n\n"),
+        metadata: {
+          meetingResult: data,
+          actionItemCount: data.actionItemDrafts?.length || 0,
+        },
+      };
     });
 
   const submitFeedback = () =>
@@ -985,6 +1232,17 @@ export default function AIWorkbench() {
       });
       setFeedbackResult(data);
       toast.success("Feedback recorded.");
+      return {
+        message: [
+          data.structuredSummary || "Feedback recorded.",
+          data.suggestedResponseTemplate
+            ? `Suggested response:\n${data.suggestedResponseTemplate}`
+            : null,
+        ]
+          .filter(Boolean)
+          .join("\n\n"),
+        metadata: { feedbackId: data.feedback?.id, feedbackResult: data },
+      };
     });
 
   const generateProgressReport = () =>
@@ -995,6 +1253,10 @@ export default function AIWorkbench() {
         `/agents/progress/report?${params.toString()}`,
       );
       setProgressReport(data.report);
+      return {
+        message: data.report || "Progress report generated.",
+        metadata: { reportLength: data.report?.length || 0, report: data.report },
+      };
     });
 
   const runActiveAgent = async () => {
@@ -1359,11 +1621,17 @@ export default function AIWorkbench() {
           </dl>
           <button
             className={secondaryButton}
-            disabled={loadingAction === "confirm-task"}
+            disabled={loadingAction === "confirm-task" || taskDraft.createdTaskId}
             onClick={() => confirmTask(taskDraft, !taskDraft.assignee_name)}
           >
             <Check className={clsx("h-4", "w-4")} />
-            {taskDraft.assignee_name ? "Create Task" : "Assign to Me"}
+            {taskDraft.createdTaskId
+              ? taskDraft.duplicate
+                ? "Task Exists"
+                : "Task Created"
+              : taskDraft.assignee_name
+                ? "Create Task"
+                : "Assign to Me"}
           </button>
         </div>
       ) : (
@@ -1388,56 +1656,62 @@ export default function AIWorkbench() {
               const isCreated = Boolean(item.createdTaskId);
 
               return (
-              <div
-                key={item.id}
-                className={clsx(
-                  "flex",
-                  "flex-col",
-                  "gap-3",
-                  "rounded-lg",
-                  "bg-[#f3f6ff]",
-                  "p-3",
-                  "sm:flex-row",
-                  "sm:items-center",
-                  "sm:justify-between",
-                )}
-              >
-                <div>
-                  <div
-                    className={clsx(
-                      "text-sm",
-                      "font-semibold",
-                      "text-[#191c1d]",
-                    )}
-                  >
-                    {item.title}
-                  </div>
-                  <div
-                    className={clsx("text-xs", "capitalize", "text-[#737686]")}
-                  >
-                    {item.priority} priority ·{" "}
-                    {item.assignee_name || "Unassigned"}
-                  </div>
-                </div>
-                <button
-                  className={secondaryButton}
-                  disabled={
-                    loadingAction === "confirm-task" || isCreating || isCreated
-                  }
-                  onClick={() => confirmMeetingAction(item)}
-                >
-                  {isCreating ? (
-                    <Loader2 className={clsx("h-4", "w-4", "animate-spin")} />
-                  ) : (
-                    <Check className={clsx("h-4", "w-4")} />
+                <div
+                  key={item.id}
+                  className={clsx(
+                    "flex",
+                    "flex-col",
+                    "gap-3",
+                    "rounded-lg",
+                    "bg-[#f3f6ff]",
+                    "p-3",
+                    "sm:flex-row",
+                    "sm:items-center",
+                    "sm:justify-between",
                   )}
-                  {isCreated
-                    ? "Created"
-                    : item.assignee_name
-                      ? "Create"
-                      : "Assign to Me"}
-                </button>
-              </div>
+                >
+                  <div>
+                    <div
+                      className={clsx(
+                        "text-sm",
+                        "font-semibold",
+                        "text-[#191c1d]",
+                      )}
+                    >
+                      {item.title}
+                    </div>
+                    <div
+                      className={clsx(
+                        "text-xs",
+                        "capitalize",
+                        "text-[#737686]",
+                      )}
+                    >
+                      {item.priority} priority ·{" "}
+                      {item.assignee_name || "Unassigned"}
+                    </div>
+                  </div>
+                  <button
+                    className={secondaryButton}
+                    disabled={
+                      loadingAction === "confirm-task" ||
+                      isCreating ||
+                      isCreated
+                    }
+                    onClick={() => confirmMeetingAction(item)}
+                  >
+                    {isCreating ? (
+                      <Loader2 className={clsx("h-4", "w-4", "animate-spin")} />
+                    ) : (
+                      <Check className={clsx("h-4", "w-4")} />
+                    )}
+                    {isCreated
+                      ? "Created"
+                      : item.assignee_name
+                        ? "Create"
+                        : "Assign to Me"}
+                  </button>
+                </div>
               );
             })}
           </div>
@@ -1610,13 +1884,6 @@ export default function AIWorkbench() {
   };
 
   const normalizedSearch = searchTerm.trim().toLowerCase();
-  const visibleTabs = normalizedSearch
-    ? allowedTabs.filter((agent) =>
-        `${agent.label} ${agent.shortLabel} ${agentDescriptions[agent.id]} ${agentStatuses[agent.id]}`
-          .toLowerCase()
-          .includes(normalizedSearch),
-      )
-    : allowedTabs;
   const visibleMessages = normalizedSearch
     ? chatMessages.filter((message) => {
         const messageAgent = tabs.find((tab) => tab.id === message.agentId);
@@ -1625,6 +1892,13 @@ export default function AIWorkbench() {
           .includes(normalizedSearch);
       })
     : chatMessages;
+  const visibleSessions = normalizedSearch
+    ? chatSessions.filter((session) =>
+        `${session.title} ${session.last_message || ""}`
+          .toLowerCase()
+          .includes(normalizedSearch),
+      )
+    : chatSessions;
 
   return (
     <Layout
@@ -1687,12 +1961,42 @@ export default function AIWorkbench() {
             <div
               className={clsx(
                 "flex",
+                "flex-wrap",
                 "items-center",
                 "justify-between",
                 "gap-4",
                 "xl:justify-end",
               )}
             >
+              <label className="flex items-center gap-2">
+                <span className="text-xs font-bold uppercase tracking-[0.12em] text-[#4b5563]">
+                  Agent
+                </span>
+                <select
+                  value={activeTab}
+                  onChange={(event) => handleToolSwitch(event.target.value)}
+                  className={clsx(
+                    "h-10",
+                    "min-w-52",
+                    "rounded-lg",
+                    "border",
+                    "border-[#c3c5d7]",
+                    "bg-white",
+                    "px-3",
+                    "text-sm",
+                    "font-semibold",
+                    "text-[#191c1d]",
+                    "outline-none",
+                    "focus:border-[#0b47c2]",
+                  )}
+                >
+                  {allowedTabs.map((agent) => (
+                    <option key={agent.id} value={agent.id}>
+                      {agent.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <select
                 value={selectedProvider}
                 onChange={(e) => setSelectedProvider(e.target.value)}
@@ -1749,78 +2053,93 @@ export default function AIWorkbench() {
                     "text-[#111827]",
                   )}
                 >
-                  AI Agents
+                  Chat History
                 </h1>
                 <p className={clsx("mt-2", "text-sm", "text-[#191c1d]")}>
-                  Manage specialized collaboration agents.
+                  Resume previous workbench conversations.
                 </p>
+                <button
+                  className={clsx(primaryButton, "mt-5", "w-full")}
+                  disabled={historyLoading}
+                  onClick={() => createChatSession({ activate: true })}
+                >
+                  <Plus className="h-4 w-4" />
+                  New Chat
+                </button>
               </div>
               <div
                 className={clsx(
                   "flex-1",
-                  "space-y-4",
+                  "space-y-3",
                   "overflow-y-auto",
                   "p-5",
                 )}
               >
-                {visibleTabs.map((agent) => {
-                  const active = activeTab === agent.id;
-                  const status = agentStatuses[agent.id] || "Idle";
-                  return (
-                    <button
-                      key={agent.id}
-                      onClick={() => handleToolSwitch(agent.id)}
-                      className={clsx(
-                        "w-full rounded-lg border p-4 text-left transition-colors",
-                        active
-                          ? "border-[#b9c7f8] bg-[#f1f5ff]"
-                          : "border-[#c8cde0] bg-white hover:bg-[#f8f9fb]",
-                      )}
-                    >
-                      <div
+                {historyLoading ? (
+                  <LoadingText loading idle="Loading chat history..." />
+                ) : visibleSessions.length ? (
+                  visibleSessions.map((session) => {
+                    const active = activeChatSessionId === session.id;
+                    const sessionAgent =
+                      tabs.find((tab) => tab.id === session.active_agent) ||
+                      tabs[0];
+
+                    return (
+                      <article
+                        key={session.id}
                         className={clsx(
-                          "flex",
-                          "items-start",
-                          "justify-between",
-                          "gap-3",
+                          "rounded-lg border p-3 transition-colors",
+                          active
+                            ? "border-[#b9c7f8] bg-[#f1f5ff]"
+                            : "border-[#c8cde0] bg-white hover:bg-[#f8f9fb]",
                         )}
                       >
-                        <AgentAvatar agent={agent} />
-                        <span
-                          className={clsx(
-                            "rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide",
-                            statusClass[status],
-                          )}
-                        >
-                          {status}
-                        </span>
-                      </div>
-                      <h2
-                        className={clsx(
-                          "mt-3",
-                          "text-sm",
-                          "font-bold",
-                          "tracking-[0.08em]",
-                          "text-[#001f8f]",
-                        )}
-                      >
-                        {agent.label}
-                      </h2>
-                      <p
-                        className={clsx(
-                          "mt-2",
-                          "line-clamp-2",
-                          "text-sm",
-                          "leading-5",
-                          "text-[#3f4654]",
-                        )}
-                      >
-                        {agentDescriptions[agent.id]}
-                      </p>
-                    </button>
-                  );
-                })}
-                {visibleTabs.length === 0 && (
+                        <div className="flex items-start gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              resetWorkbenchOutputs();
+                              setActiveChatSessionId(session.id);
+                            }}
+                            className="min-w-0 flex-1 text-left"
+                          >
+                            <h2 className="truncate text-sm font-bold text-[#111827]">
+                              {session.title}
+                            </h2>
+                            <p className="mt-1 truncate text-xs text-[#5f6b7a]">
+                              {session.last_message || sessionAgent.label}
+                            </p>
+                          </button>
+                          <span className="shrink-0 rounded-full bg-[#eef2ff] px-2 py-1 text-[10px] font-bold text-[#003fb1]">
+                            {sessionAgent.shortLabel}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setSessionPendingDelete(session)}
+                            disabled={deletingSessionId === session.id}
+                            className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-[#7a1d1d] transition-colors hover:bg-[#ffdad6] disabled:cursor-not-allowed disabled:opacity-60"
+                            aria-label={`Delete chat ${session.title}`}
+                            title="Delete chat"
+                          >
+                            {deletingSessionId === session.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-4 w-4" />
+                            )}
+                          </button>
+                        </div>
+                        <time className="mt-3 block text-[11px] font-semibold text-[#737686]">
+                          {new Date(session.updated_at).toLocaleString([], {
+                            month: "short",
+                            day: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </time>
+                      </article>
+                    );
+                  })
+                ) : (
                   <div
                     className={clsx(
                       "rounded-lg",
@@ -1832,47 +2151,11 @@ export default function AIWorkbench() {
                       "text-[#434654]",
                     )}
                   >
-                    No agents match the current search.
+                    {normalizedSearch
+                      ? "No saved chats match the current search."
+                      : "No saved chats yet."}
                   </div>
                 )}
-              </div>
-              <div className={clsx("border-t", "border-[#c8cde0]", "p-5")}>
-                <button
-                  className={clsx(
-                    "flex",
-                    "h-12",
-                    "w-full",
-                    "items-center",
-                    "justify-center",
-                    "gap-2",
-                    "rounded",
-                    "border",
-                    "border-[#0b47c2]",
-                    "bg-white",
-                    "text-base",
-                    "font-semibold",
-                    "text-[#0b47c2]",
-                    "hover:bg-[#f1f5ff]",
-                  )}
-                >
-                  <span
-                    className={clsx(
-                      "flex",
-                      "h-6",
-                      "w-6",
-                      "items-center",
-                      "justify-center",
-                      "rounded-full",
-                      "border-2",
-                      "border-[#0b47c2]",
-                      "text-lg",
-                      "leading-none",
-                    )}
-                  >
-                    +
-                  </span>
-                  Add Specialized Agent
-                </button>
               </div>
             </aside>
 
@@ -1888,90 +2171,6 @@ export default function AIWorkbench() {
                 "xl:border-b-0",
               )}
             >
-              <div
-                className={clsx(
-                  "flex",
-                  "min-h-[100px]",
-                  "items-center",
-                  "justify-between",
-                  "gap-4",
-                  "border-b",
-                  "border-[#c8cde0]",
-                  "bg-white",
-                  "px-6",
-                  "py-4",
-                )}
-              >
-                <div className={clsx("flex", "items-center", "gap-4")}>
-                  <div>
-                    <p
-                      className={clsx(
-                        "text-xs",
-                        "font-bold",
-                        "uppercase",
-                        "tracking-[0.16em]",
-                        "text-[#303846]",
-                      )}
-                    >
-                      Active Agents:
-                    </p>
-                    <div className={clsx("mt-2", "flex", "-space-x-1")}>
-                      {allowedTabs.slice(0, 3).map((agent) => (
-                        <AgentAvatar
-                          key={agent.id}
-                          agent={agent}
-                          className={clsx(
-                            "h-8",
-                            "w-8",
-                            "rounded-full",
-                            "ring-2",
-                            "ring-white",
-                            "[&>svg]:h-4",
-                            "[&>svg]:w-4",
-                          )}
-                        />
-                      ))}
-                      <span
-                        className={clsx(
-                          "flex",
-                          "h-8",
-                          "w-8",
-                          "items-center",
-                          "justify-center",
-                          "rounded-full",
-                          "bg-[#dfe3e8]",
-                          "ring-2",
-                          "ring-white",
-                        )}
-                      >
-                        <MoreHorizontal className={clsx("h-4", "w-4")} />
-                      </span>
-                    </div>
-                  </div>
-                  <p
-                    className={clsx(
-                      "hidden",
-                      "max-w-48",
-                      "text-sm",
-                      "italic",
-                      "leading-5",
-                      "text-[#303846]",
-                      "md:block",
-                    )}
-                  >
-                    {activeAgent.label} is summarizing context...
-                  </p>
-                </div>
-                <button
-                  className={secondaryButton}
-                  onClick={runActiveAgent}
-                  disabled={Boolean(loadingAction)}
-                >
-                  <Wand2 className={clsx("h-4", "w-4", "text-[#0b47c2]")} />
-                  Summon {activeAgent.shortLabel}
-                </button>
-              </div>
-
               <div
                 className={clsx(
                   "flex-1",
@@ -2115,38 +2314,6 @@ export default function AIWorkbench() {
                             text={message.text}
                             stream={!!message.stream}
                           />
-                          <div
-                            className={clsx(
-                              "mt-4",
-                              "rounded",
-                              "bg-[#f1f5ff]",
-                              "p-4",
-                              "text-sm",
-                            )}
-                          >
-                            <p
-                              className={clsx(
-                                "font-bold",
-                                "uppercase",
-                                "text-[#003fb1]",
-                              )}
-                            >
-                              Proposed Action
-                            </p>
-                            <p className={clsx("mt-1", "italic")}>
-                              "
-                              {activeTab === "rag"
-                                ? "Search indexed documents for supporting evidence."
-                                : activeTab === "task"
-                                  ? "Convert this request into a structured project task."
-                                  : activeTab === "meeting"
-                                    ? "Summarize coordination notes and extract action items."
-                                    : activeTab === "feedback"
-                                      ? "Analyze advisor feedback and draft a response."
-                                      : "Generate an advisor-ready weekly progress report."}
-                              "
-                            </p>
-                          </div>
                         </div>
                       </div>
                     </div>
@@ -2167,7 +2334,9 @@ export default function AIWorkbench() {
                       "text-[#434654]",
                     )}
                   >
-                    No conversation messages match the current search.
+                    {normalizedSearch
+                      ? "No conversation messages match the current search."
+                      : "No messages yet. Send a prompt to start this chat."}
                   </div>
                 )}
 
@@ -2183,35 +2352,6 @@ export default function AIWorkbench() {
                   "py-5",
                 )}
               >
-                <div
-                  className={clsx("mb-5", "grid", "gap-3", "md:grid-cols-3")}
-                >
-                  <button
-                    className={secondaryButton}
-                    disabled={!allowedTabIds.has("meeting")}
-                    onClick={() => handleToolSwitch("meeting")}
-                  >
-                    <FileText className={clsx("h-4", "w-4")} />
-                    Summarize Thread
-                  </button>
-                  <button
-                    className={secondaryButton}
-                    disabled={!allowedTabIds.has("task")}
-                    onClick={() => handleToolSwitch("task")}
-                  >
-                    <ClipboardList className={clsx("h-4", "w-4")} />
-                    Generate Task
-                  </button>
-                  <button
-                    className={secondaryButton}
-                    disabled={!allowedTabIds.has("rag")}
-                    onClick={() => handleToolSwitch("rag")}
-                  >
-                    <Search className={clsx("h-4", "w-4")} />
-                    Search Knowledge Base
-                  </button>
-                </div>
-
                 <div
                   className={clsx(
                     "rounded-2xl",
@@ -2278,7 +2418,7 @@ export default function AIWorkbench() {
                     </div>
                     <button
                       className={primaryButton}
-                      disabled={Boolean(loadingAction)}
+                      disabled={Boolean(loadingAction) || !activeChatSessionId}
                       onClick={runActiveAgent}
                     >
                       Send
@@ -2578,6 +2718,18 @@ export default function AIWorkbench() {
               </aside>
             )}
           </div>
+          <DeleteConfirmationModal
+            open={Boolean(sessionPendingDelete)}
+            title="Delete chat?"
+            message="This will permanently remove the saved chat history."
+            itemName={sessionPendingDelete?.title}
+            confirmLabel="Delete Chat"
+            loading={deletingSessionId === sessionPendingDelete?.id}
+            onCancel={() => {
+              if (!deletingSessionId) setSessionPendingDelete(null);
+            }}
+            onConfirm={() => deleteChatSession(sessionPendingDelete?.id)}
+          />
         </div>
       </WorkbenchErrorBoundary>
     </Layout>

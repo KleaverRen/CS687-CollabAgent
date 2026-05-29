@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect, useCallback } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import clsx from "clsx";
 import {
   Bot,
@@ -335,7 +335,7 @@ function AccountabilityPulse({ risks, completedCheckins, totalCheckins }) {
   );
 }
 
-function FeedbackRequestCard({ feedbackItems }) {
+function FeedbackRequestCard({ feedbackItems, onOpenFeedback, selectedId }) {
   return (
     <SectionCard
       className="p-5 sm:p-6"
@@ -353,8 +353,11 @@ function FeedbackRequestCard({ feedbackItems }) {
             <button
               key={request.id}
               type="button"
-              className="flex w-full items-center gap-3 rounded-lg px-1 py-2 text-left text-sm text-[#191c1d] transition-colors hover:bg-[#f3f6ff] focus:outline-none focus:ring-2 focus:ring-[#0b47c2]/30"
-              onClick={() => toast.success(`${request.label} opened.`)}
+              className={clsx(
+                "flex w-full items-center gap-3 rounded-lg px-1 py-2 text-left text-sm text-[#191c1d] transition-colors hover:bg-[#f3f6ff] focus:outline-none focus:ring-2 focus:ring-[#0b47c2]/30",
+                selectedId === String(request.rawId) && "bg-[#f0f4ff]",
+              )}
+              onClick={() => onOpenFeedback(request)}
               aria-label={`Open pending peer review: ${request.label}`}
             >
               <span
@@ -380,11 +383,67 @@ function FeedbackRequestCard({ feedbackItems }) {
           secondaryButton,
           "mt-6 w-full border-[#0b47c2] text-[#003fb1]",
         )}
-        onClick={() => toast.success("Feedback center opened.")}
+        onClick={() => {
+          if (feedbackItems[0]) {
+            onOpenFeedback(feedbackItems[0]);
+          }
+        }}
+        disabled={!feedbackItems.length}
         aria-label="Open full feedback center"
       >
         Open Full Center
       </button>
+    </SectionCard>
+  );
+}
+
+function AdvisorFeedbackDetail({ feedback }) {
+  if (!feedback) return null;
+
+  return (
+    <SectionCard className="p-5 sm:p-6" aria-labelledby="advisor-feedback-detail">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h2
+            id="advisor-feedback-detail"
+            className="text-sm font-medium uppercase tracking-[0.22em] text-[#303846]"
+          >
+            Advisor Feedback
+          </h2>
+          <p className="mt-2 text-sm font-semibold text-[#191c1d]">
+            {feedback.advisor_name || "Advisor"}
+          </p>
+        </div>
+        <span className="w-fit rounded-full bg-[#eef2ff] px-3 py-1 text-xs font-bold capitalize text-[#003fb1]">
+          {feedback.severity || "medium"}
+        </span>
+      </div>
+      <div className="mt-4 rounded-lg bg-[#f8f9fb] p-4 text-sm leading-6 text-[#191c1d]">
+        {feedback.body}
+      </div>
+      <dl className="mt-4 grid gap-3 text-xs text-[#555f6d] sm:grid-cols-3">
+        <div>
+          <dt className="font-bold uppercase tracking-wide text-[#303846]">Category</dt>
+          <dd className="mt-1 capitalize">{feedback.category || "general"}</dd>
+        </div>
+        <div>
+          <dt className="font-bold uppercase tracking-wide text-[#303846]">Status</dt>
+          <dd className="mt-1 capitalize">{feedback.status || "posted"}</dd>
+        </div>
+        <div>
+          <dt className="font-bold uppercase tracking-wide text-[#303846]">Posted</dt>
+          <dd className="mt-1">
+            {feedback.created_at
+              ? new Date(feedback.created_at).toLocaleString([], {
+                  month: "short",
+                  day: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })
+              : "Unknown"}
+          </dd>
+        </div>
+      </dl>
     </SectionCard>
   );
 }
@@ -601,11 +660,13 @@ const DEFAULT_MEMBER_AVATAR =
 
 function TeamCoordinationHubContent() {
   const { id: projectId } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [optimizationState, setOptimizationState] = useState("pending");
   const [project, setProject] = useState(null);
   const [teamMembers, setTeamMembers] = useState([]);
   const [risks, setRisks] = useState([]);
   const [feedbackItems, setFeedbackItems] = useState([]);
+  const [selectedFeedback, setSelectedFeedback] = useState(null);
   const [metrics, setMetrics] = useState({
     completedCheckins: 12,
     totalCheckins: 14,
@@ -616,6 +677,17 @@ function TeamCoordinationHubContent() {
   const [loading, setLoading] = useState(true);
 
   const projectHref = useMemo(() => `/projects/${projectId}`, [projectId]);
+  const selectedFeedbackId = searchParams.get("feedbackId");
+
+  const handleOpenFeedback = useCallback(
+    (feedback) => {
+      setSelectedFeedback(feedback);
+      const nextParams = new URLSearchParams(searchParams);
+      nextParams.set("feedbackId", String(feedback.rawId || feedback.id));
+      setSearchParams(nextParams, { replace: true });
+    },
+    [searchParams, setSearchParams],
+  );
 
   // Map a project member to the TeamMemberCard shape
   const mapMember = useCallback(
@@ -667,11 +739,26 @@ function TeamCoordinationHubContent() {
         const fbItems = Array.isArray(feedbackData) ? feedbackData : [];
         setFeedbackItems(
           fbItems.map((fb) => ({
-            id: `fb-${fb.id}`,
+            id: fb.id,
+            rawId: fb.id,
             label: `${fb.category ? `${fb.category}: ` : ""}${fb.body?.slice(0, 60) || "Feedback item"}${fb.body?.length > 60 ? "..." : ""}`,
             priority: fb.severity === "high" || fb.severity === "urgent",
+            ...fb,
           })),
         );
+
+        let selected = selectedFeedbackId
+          ? fbItems.find((fb) => String(fb.id) === String(selectedFeedbackId))
+          : null;
+        if (!selected && selectedFeedbackId) {
+          try {
+            const detailRes = await api.get(`/agents/feedback/${selectedFeedbackId}`);
+            selected = detailRes.data?.feedback || null;
+          } catch (err) {
+            console.error("[TeamCoordinationHub] Failed to load feedback detail:", err);
+          }
+        }
+        setSelectedFeedback(selected || fbItems[0] || null);
 
         // Compute sentiment tags from feedback categories
         const categories = [
@@ -712,7 +799,7 @@ function TeamCoordinationHubContent() {
     };
 
     loadData();
-  }, [projectId, mapMember]);
+  }, [projectId, mapMember, selectedFeedbackId]);
 
   if (loading) {
     return (
@@ -785,7 +872,12 @@ function TeamCoordinationHubContent() {
               completedCheckins={metrics.completedCheckins}
               totalCheckins={metrics.totalCheckins}
             />
-            <FeedbackRequestCard feedbackItems={feedbackItems} />
+            <FeedbackRequestCard
+              feedbackItems={feedbackItems}
+              onOpenFeedback={handleOpenFeedback}
+              selectedId={selectedFeedback ? String(selectedFeedback.id) : ""}
+            />
+            <AdvisorFeedbackDetail feedback={selectedFeedback} />
           </div>
         </div>
 
