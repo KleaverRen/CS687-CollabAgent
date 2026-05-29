@@ -7,19 +7,20 @@ const eventBroker = require('../../services/eventBroker');
 const generationService = require('../../services/generationService');
 const { recordProjectEvent } = require('../../services/notificationService');
 
+function requireAdvisorAgent(req, res, next) {
+  if (!['advisor', 'faculty'].includes(req.user?.role)) {
+    return res.status(403).json({ error: 'Feedback Agent is available to advisors only.' });
+  }
+  next();
+}
+
 // POST /api/agents/feedback/submit - Submit feedback and generate suggested responses
-router.post('/submit', authenticate, async (req, res) => {
+router.post('/submit', authenticate, requireAdvisorAgent, async (req, res) => {
   try {
     const { projectId, body, category, milestoneRef, severity, provider = null } = req.body;
     
     if (!projectId || !body) {
       return res.status(400).json({ error: 'projectId and body are required' });
-    }
-
-    // Role check: Only advisors should technically submit feedback, but we allow it for demo purposes or check if req.user.role === 'advisor'
-    if (req.user.role !== 'advisor' && req.user.role !== 'faculty') {
-      // In a real app we might reject this. We'll proceed with a warning log.
-      console.warn(`[FeedbackAgent] Non-advisor (${req.user.role}) is submitting feedback.`);
     }
 
     const fallbackResult = {
@@ -88,7 +89,7 @@ Format strictly as JSON.`;
 });
 
 // GET /api/agents/feedback/open - Get unresolved feedback
-router.get('/open', authenticate, async (req, res) => {
+router.get('/open', authenticate, requireAdvisorAgent, async (req, res) => {
   try {
     const { projectId } = req.query;
     

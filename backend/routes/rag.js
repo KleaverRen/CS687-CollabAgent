@@ -12,6 +12,12 @@ require('../services/embeddingService');
 
 // Note: For development/testing, authenticate can be bypassed, but we require it here for production alignment
 router.use(authenticate);
+router.use((req, res, next) => {
+  if (req.user?.role !== 'student') {
+    return res.status(403).json({ error: 'Knowledge Agent is available to students only.' });
+  }
+  next();
+});
 
 /**
  * POST /api/rag/ingest

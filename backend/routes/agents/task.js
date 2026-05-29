@@ -7,6 +7,15 @@ const eventBroker = require("../../services/eventBroker");
 const generationService = require("../../services/generationService");
 const { recordProjectEvent } = require("../../services/notificationService");
 
+function requireStudentAgent(req, res, next) {
+  if (req.user?.role !== "student") {
+    return res
+      .status(403)
+      .json({ error: "Task Orchestrator is available to students only." });
+  }
+  next();
+}
+
 function normalizePriority(priority) {
   const normalized = String(priority || "medium").toLowerCase();
   if (normalized === "urgent") return "critical";
@@ -251,6 +260,15 @@ function normalizeSingleTaskDraft(draft, request) {
   };
 }
 
+function buildDuplicateTaskMetadataFilter(metadata, paramIndex) {
+  const source = metadata?.source;
+  const order = metadata?.order;
+  if (!source || order === undefined || order === null) return "";
+
+  return `AND metadata->>'source' = $${paramIndex}
+       AND metadata->>'order' = $${paramIndex + 1}`;
+}
+
 function fallbackPhaseOneTasks() {
   return [
     {
@@ -365,7 +383,7 @@ function fallbackPhaseOneTasks() {
 }
 
 // POST /api/agents/task/parse - Parse NL task request into a draft
-router.post("/parse", authenticate, async (req, res) => {
+router.post("/parse", authenticate, requireStudentAgent, async (req, res) => {
   try {
     const { request, projectId, provider = null } = req.body;
 
@@ -455,7 +473,7 @@ Format: { "title": "string", "priority": "string", "assignee_name": "string or n
 });
 
 // POST /api/agents/task/confirm - Commit task to DB (Requires user_confirmed: true)
-router.post("/confirm", authenticate, agentGate, async (req, res) => {
+router.post("/confirm", authenticate, requireStudentAgent, agentGate, async (req, res) => {
   try {
     const { draft, projectId } = req.body;
 
@@ -481,6 +499,44 @@ router.post("/confirm", authenticate, agentGate, async (req, res) => {
       projectId,
       req.user,
     );
+    const metadata = draft.metadata || {};
+    const duplicateParams = [
+      projectId,
+      draft.title,
+      assignedTo,
+      metadata.source,
+      metadata.order !== undefined && metadata.order !== null
+        ? String(metadata.order)
+        : null,
+    ];
+    const duplicateMetadataFilter = buildDuplicateTaskMetadataFilter(
+      metadata,
+      4,
+    );
+
+    if (duplicateMetadataFilter) {
+      const duplicate = await pool.query(
+        `SELECT t.*, u.full_name AS assignee_name, u.avatar_url AS assignee_avatar
+         FROM tasks t
+         LEFT JOIN users u ON t.assigned_to = u.id
+         WHERE t.project_id = $1
+           AND LOWER(TRIM(t.title)) = LOWER(TRIM($2))
+           AND t.status <> 'done'
+           AND t.assigned_to IS NOT DISTINCT FROM $3
+           ${duplicateMetadataFilter}
+         ORDER BY t.created_at DESC
+         LIMIT 1`,
+        duplicateParams,
+      );
+
+      if (duplicate.rows.length) {
+        return res.status(200).json({
+          task: duplicate.rows[0],
+          duplicate: true,
+          message: "Task already exists for this draft.",
+        });
+      }
+    }
 
     // Write to database using the same task schema as the primary task API.
     const result = await pool.query(
@@ -495,7 +551,7 @@ router.post("/confirm", authenticate, agentGate, async (req, res) => {
         draft.status || "todo",
         normalizePriority(draft.priority),
         assignedTo,
-        draft.metadata || {},
+        metadata,
         req.user.id,
       ],
     );
@@ -552,7 +608,7 @@ router.post("/confirm", authenticate, agentGate, async (req, res) => {
 });
 
 // POST /api/agents/task/update-existing - Draft an update for an existing todo task
-router.post("/update-existing", authenticate, async (req, res) => {
+router.post("/update-existing", authenticate, requireStudentAgent, async (req, res) => {
   try {
     const { request, projectId, provider = null } = req.body;
 
@@ -656,6 +712,7 @@ If the user did not request an assignee or deadline, use null for that field.`;
 router.post(
   "/update-existing/confirm",
   authenticate,
+  requireStudentAgent,
   agentGate,
   async (req, res) => {
     try {
@@ -762,7 +819,7 @@ router.post(
 );
 
 // GET /api/agents/task/prioritized - Get tasks ranked by priority
-router.get("/prioritized", authenticate, async (req, res) => {
+router.get("/prioritized", authenticate, requireStudentAgent, async (req, res) => {
   try {
     const { projectId } = req.query;
 
@@ -794,6 +851,7 @@ router.get("/prioritized", authenticate, async (req, res) => {
 });
 
 router._test = {
+  buildDuplicateTaskMetadataFilter,
   looksLikeTaskBreakdownRequest,
   normalizeSingleTaskDraft,
 };

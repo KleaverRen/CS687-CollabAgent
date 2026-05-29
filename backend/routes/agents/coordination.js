@@ -11,8 +11,15 @@ function normalizePriority(priority) {
   return ['low', 'medium', 'high', 'critical'].includes(normalized) ? normalized : 'medium';
 }
 
+function requireStudentAgent(req, res, next) {
+  if (req.user?.role !== 'student') {
+    return res.status(403).json({ error: 'Team Coordinator is available to students only.' });
+  }
+  next();
+}
+
 // POST /api/agents/coordination/meeting - Summarize meeting and extract tasks
-router.post('/meeting', authenticate, async (req, res) => {
+router.post('/meeting', authenticate, requireStudentAgent, async (req, res) => {
   try {
     const { transcript, projectId, provider = null } = req.body;
     
@@ -39,9 +46,14 @@ Format strictly as JSON.`;
     const parsed = await generationService.generateJson(systemPrompt, `Transcript:\n${transcript}`, fallbackResult, provider);
     const summary = parsed.summary || fallbackResult.summary;
     const actionItemDrafts = (Array.isArray(parsed.action_items) ? parsed.action_items : fallbackResult.action_items)
-      .map(item => ({
+      .map((item, index) => ({
         ...item,
-        priority: normalizePriority(item.priority)
+        priority: normalizePriority(item.priority),
+        metadata: {
+          ...(item.metadata || {}),
+          source: "team_coordinator_action_item",
+          order: index + 1,
+        },
       }));
 
     // Log the meeting event

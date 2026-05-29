@@ -5,8 +5,15 @@ const { authenticate } = require('../../middleware/auth');
 const eventBroker = require('../../services/eventBroker');
 const generationService = require('../../services/generationService');
 
+function requireAdvisorAgent(req, res, next) {
+  if (!['advisor', 'faculty'].includes(req.user?.role)) {
+    return res.status(403).json({ error: 'Advisor Analyst is available to advisors only.' });
+  }
+  next();
+}
+
 // GET /api/agents/progress/dashboard - Aggregated health metrics
-router.get('/dashboard', authenticate, async (req, res) => {
+router.get('/dashboard', authenticate, requireAdvisorAgent, async (req, res) => {
   try {
     const { projectId } = req.query;
     
@@ -49,7 +56,7 @@ router.get('/dashboard', authenticate, async (req, res) => {
 });
 
 // GET /api/agents/progress/risks - Prioritized risk register
-router.get('/risks', authenticate, async (req, res) => {
+router.get('/risks', authenticate, requireAdvisorAgent, async (req, res) => {
   try {
     const { projectId } = req.query;
     if (!projectId) return res.status(400).json({ error: 'projectId is required' });
@@ -76,7 +83,7 @@ router.get('/risks', authenticate, async (req, res) => {
 });
 
 // GET /api/agents/progress/report - Generate a narrative progress report via LLM
-router.get('/report', authenticate, async (req, res) => {
+router.get('/report', authenticate, requireAdvisorAgent, async (req, res) => {
   try {
     const { projectId, provider = null } = req.query;
     if (!projectId) return res.status(400).json({ error: 'projectId is required' });

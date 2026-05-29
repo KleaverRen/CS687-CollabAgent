@@ -76,6 +76,18 @@ const tabs = [
   },
 ];
 
+const roleAgentAccess = {
+  student: ["rag", "task", "meeting"],
+  advisor: ["feedback", "progress"],
+  faculty: ["feedback", "progress"],
+};
+
+function getAllowedTabsForRole(role) {
+  const normalizedRole = String(role || "").toLowerCase();
+  const allowedIds = roleAgentAccess[normalizedRole] || roleAgentAccess.student;
+  return tabs.filter((tab) => allowedIds.includes(tab.id));
+}
+
 const buttonBase =
   "inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-4 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60";
 const primaryButton = `${buttonBase} bg-[#0b47c2] text-white hover:bg-[#1353d8]`;
@@ -321,6 +333,7 @@ export default function AIWorkbench() {
 
   const [transcript, setTranscript] = useState("");
   const [meetingResult, setMeetingResult] = useState(null);
+  const [creatingMeetingActionIds, setCreatingMeetingActionIds] = useState([]);
 
   const [feedbackBody, setFeedbackBody] = useState("");
   const [feedbackSeverity, setFeedbackSeverity] = useState("medium");
@@ -331,9 +344,21 @@ export default function AIWorkbench() {
   const [isEditingReport, setIsEditingReport] = useState(false);
 
   const isAdvisor = user?.role?.toLowerCase() === "advisor";
+  const allowedTabs = useMemo(
+    () => getAllowedTabsForRole(user?.role),
+    [user?.role],
+  );
+  const allowedTabIds = useMemo(
+    () => new Set(allowedTabs.map((tab) => tab.id)),
+    [allowedTabs],
+  );
+  const defaultTabId = allowedTabs[0]?.id || "rag";
   const activeAgent = useMemo(
-    () => tabs.find((tab) => tab.id === activeTab) || tabs[0],
-    [activeTab],
+    () =>
+      allowedTabs.find((tab) => tab.id === activeTab) ||
+      allowedTabs[0] ||
+      tabs[0],
+    [activeTab, allowedTabs],
   );
   const providerValue = selectedProvider === "auto" ? null : selectedProvider;
 
@@ -468,7 +493,9 @@ export default function AIWorkbench() {
       sessionStorage.removeItem(savedStateKey);
     }
 
-    setActiveTab(nextState?.activeTab || "rag");
+    setActiveTab(
+      allowedTabIds.has(nextState?.activeTab) ? nextState.activeTab : defaultTabId,
+    );
     setLoadingAction("");
     setSelectedProvider(nextState?.selectedProvider || "auto");
     setSearchTerm(nextState?.searchTerm || "");
@@ -495,6 +522,7 @@ export default function AIWorkbench() {
           }
         : null,
     );
+    setCreatingMeetingActionIds([]);
     setFeedbackBody(nextState?.feedbackBody || "");
     setFeedbackSeverity(nextState?.feedbackSeverity || "medium");
     setFeedbackResult(nextState?.feedbackResult || null);
@@ -530,7 +558,13 @@ export default function AIWorkbench() {
           ),
         );
     }
-  }, [projectId, user?.id, user?.role]);
+  }, [allowedTabIds, defaultTabId, projectId, user?.id, user?.role]);
+
+  useEffect(() => {
+    if (!allowedTabIds.has(activeTab)) {
+      setActiveTab(defaultTabId);
+    }
+  }, [activeTab, allowedTabIds, defaultTabId]);
 
   useEffect(() => {
     if (restoredProjectRef.current !== (projectId || "global")) return;
@@ -669,7 +703,11 @@ export default function AIWorkbench() {
 
   const handleToolSwitch = (nextTab) => {
     if (nextTab === activeTab) return;
-    const nextAgent = tabs.find((tab) => tab.id === nextTab);
+    if (!allowedTabIds.has(nextTab)) {
+      toast.error("This agent is not available for your role.");
+      return;
+    }
+    const nextAgent = allowedTabs.find((tab) => tab.id === nextTab);
     setActiveTab(nextTab);
     logWorkbenchActivity({
       actionType: "Tool Switch",
@@ -805,6 +843,53 @@ export default function AIWorkbench() {
           ? `Task assigned to ${data.task.assignee_name}.`
           : "Task created.",
       );
+    });
+
+  const markMeetingActionDraft = (draftId, patch) => {
+    setMeetingResult((current) =>
+      current
+        ? {
+            ...current,
+            actionItemDrafts: current.actionItemDrafts?.map((item) =>
+              item.id === draftId ? { ...item, ...patch } : item,
+            ),
+          }
+        : current,
+    );
+  };
+
+  const confirmMeetingAction = (draft) =>
+    runAction("confirm-task", async () => {
+      if (draft.createdTaskId || creatingMeetingActionIds.includes(draft.id)) {
+        return false;
+      }
+
+      setCreatingMeetingActionIds((ids) => [...ids, draft.id]);
+      try {
+        const { data } = await api.post("/agents/task/confirm", {
+          draft: !draft.assignee_name
+            ? { ...draft, assignee_name: "me" }
+            : draft,
+          projectId,
+          user_confirmed: true,
+        });
+
+        markMeetingActionDraft(draft.id, {
+          createdTaskId: data.task?.id || true,
+          createdAt: new Date().toISOString(),
+        });
+        toast.success(
+          data.duplicate
+            ? "Task already exists."
+            : data.task?.assignee_name
+              ? `Task assigned to ${data.task.assignee_name}.`
+              : "Task created.",
+        );
+      } finally {
+        setCreatingMeetingActionIds((ids) =>
+          ids.filter((id) => id !== draft.id),
+        );
+      }
     });
 
   const confirmTaskDrafts = (drafts) =>
@@ -1298,7 +1383,11 @@ export default function AIWorkbench() {
             {meetingResult.summary}
           </p>
           <div className="space-y-2">
-            {meetingResult.actionItemDrafts?.map((item) => (
+            {meetingResult.actionItemDrafts?.map((item) => {
+              const isCreating = creatingMeetingActionIds.includes(item.id);
+              const isCreated = Boolean(item.createdTaskId);
+
+              return (
               <div
                 key={item.id}
                 className={clsx(
@@ -1332,14 +1421,25 @@ export default function AIWorkbench() {
                 </div>
                 <button
                   className={secondaryButton}
-                  disabled={loadingAction === "confirm-task"}
-                  onClick={() => confirmTask(item, !item.assignee_name)}
+                  disabled={
+                    loadingAction === "confirm-task" || isCreating || isCreated
+                  }
+                  onClick={() => confirmMeetingAction(item)}
                 >
-                  <Check className={clsx("h-4", "w-4")} />
-                  {item.assignee_name ? "Create" : "Assign to Me"}
+                  {isCreating ? (
+                    <Loader2 className={clsx("h-4", "w-4", "animate-spin")} />
+                  ) : (
+                    <Check className={clsx("h-4", "w-4")} />
+                  )}
+                  {isCreated
+                    ? "Created"
+                    : item.assignee_name
+                      ? "Create"
+                      : "Assign to Me"}
                 </button>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       ) : (
@@ -1469,6 +1569,15 @@ export default function AIWorkbench() {
   );
 
   const renderWorkflow = () => {
+    if (!allowedTabIds.has(activeTab)) {
+      return (
+        <ResultBlock title="Agent Unavailable">
+          <p className="text-sm text-[#434654]">
+            This agent is not available for your role.
+          </p>
+        </ResultBlock>
+      );
+    }
     if (activeTab === "rag") return renderRag();
     if (activeTab === "task") return renderTask();
     if (activeTab === "meeting") return renderMeeting();
@@ -1502,12 +1611,12 @@ export default function AIWorkbench() {
 
   const normalizedSearch = searchTerm.trim().toLowerCase();
   const visibleTabs = normalizedSearch
-    ? tabs.filter((agent) =>
+    ? allowedTabs.filter((agent) =>
         `${agent.label} ${agent.shortLabel} ${agentDescriptions[agent.id]} ${agentStatuses[agent.id]}`
           .toLowerCase()
           .includes(normalizedSearch),
       )
-    : tabs;
+    : allowedTabs;
   const visibleMessages = normalizedSearch
     ? chatMessages.filter((message) => {
         const messageAgent = tabs.find((tab) => tab.id === message.agentId);
@@ -1807,7 +1916,7 @@ export default function AIWorkbench() {
                       Active Agents:
                     </p>
                     <div className={clsx("mt-2", "flex", "-space-x-1")}>
-                      {tabs.slice(0, 3).map((agent) => (
+                      {allowedTabs.slice(0, 3).map((agent) => (
                         <AgentAvatar
                           key={agent.id}
                           agent={agent}
@@ -2079,6 +2188,7 @@ export default function AIWorkbench() {
                 >
                   <button
                     className={secondaryButton}
+                    disabled={!allowedTabIds.has("meeting")}
                     onClick={() => handleToolSwitch("meeting")}
                   >
                     <FileText className={clsx("h-4", "w-4")} />
@@ -2086,6 +2196,7 @@ export default function AIWorkbench() {
                   </button>
                   <button
                     className={secondaryButton}
+                    disabled={!allowedTabIds.has("task")}
                     onClick={() => handleToolSwitch("task")}
                   >
                     <ClipboardList className={clsx("h-4", "w-4")} />
@@ -2093,6 +2204,7 @@ export default function AIWorkbench() {
                   </button>
                   <button
                     className={secondaryButton}
+                    disabled={!allowedTabIds.has("rag")}
                     onClick={() => handleToolSwitch("rag")}
                   >
                     <Search className={clsx("h-4", "w-4")} />

@@ -36,3 +36,15 @@ test("single task draft normalization prevents blank generated titles", () => {
   assert.equal(draft.priority, "critical");
   assert.equal(draft.assignee_name, null);
 });
+
+test("duplicate metadata filter requires stable generated draft identity", () => {
+  assert.equal(
+    taskAgent._test.buildDuplicateTaskMetadataFilter(
+      { source: "team_coordinator_action_item", order: 2 },
+      4,
+    ),
+    "AND metadata->>'source' = $4\n       AND metadata->>'order' = $5",
+  );
+
+  assert.equal(taskAgent._test.buildDuplicateTaskMetadataFilter({}, 4), "");
+});
