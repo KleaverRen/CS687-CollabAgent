@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  useMemo,
+} from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import api from "../utils/api";
@@ -44,8 +50,8 @@ export default function Dashboard() {
         api.get("/projects", { signal: controller.signal }),
         api.get("/users/dashboard-stats", { signal: controller.signal }),
       ]);
-      setProjects(pRes.data.projects);
-      setStats(sRes.data.stats);
+      setProjects(pRes.data?.projects || []);
+      setStats(sRes.data?.stats || null);
     } catch (err) {
       if (err?.name === "CanceledError" || err?.code === "ERR_CANCELED") return;
       toast.error("Failed to load dashboard data.");
@@ -98,11 +104,23 @@ export default function Dashboard() {
   }, [projectToDelete, isDeleting]);
 
   // ── Derived data ──────────────────────────────────────────────────────────
-  const displayProjects = projects.filter(
-    (p) => p.status === "active" || p.status === "in_progress",
+  const recentProjects = useMemo(() => {
+    const filtered = projects.filter(
+      (p) => p.status === "active" || p.status === "in_progress",
+    );
+    const source = filtered.length > 0 ? filtered : projects;
+    return source.slice(0, 6);
+  }, [projects]);
+
+  const today = useMemo(
+    () =>
+      new Date().toLocaleDateString("en-US", {
+        weekday: "long",
+        month: "long",
+        day: "numeric",
+      }),
+    [],
   );
-  const allProjects = displayProjects.length > 0 ? displayProjects : projects;
-  const recentProjects = allProjects.slice(0, 6);
 
   return (
     <Layout activePath="/dashboard">
@@ -113,9 +131,13 @@ export default function Dashboard() {
             <h1 className="text-2xl md:text-3xl font-bold text-[#191c1d]">
               Welcome back, {user?.full_name || "Demo User"} 👋
             </h1>
-            <p className="text-sm text-[#555f6d] mt-1">
-              {user?.institution || "Your research workspace"}
-            </p>
+            <div className="flex items-center gap-2 mt-1">
+              <p className="text-sm font-medium text-[#555f6d]">
+                {user?.institution || "Your research workspace"}
+              </p>
+              <span className="text-[#c3c5d7]">•</span>
+              <p className="text-sm text-[#888e96]">{today}</p>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             {/* Refresh button */}
@@ -124,6 +146,7 @@ export default function Dashboard() {
               disabled={refreshing}
               className="h-10 w-10 flex items-center justify-center rounded-xl border border-[#e1e3e4] text-[#555f6d] hover:bg-[#f3f4f5] disabled:opacity-50 transition-colors"
               title="Refresh dashboard"
+              aria-label="Refresh dashboard"
             >
               <svg
                 className={`w-4 h-4 transition-transform ${refreshing ? "animate-spin" : ""}`}
@@ -152,30 +175,41 @@ export default function Dashboard() {
 
         {/* ── Stats ─────────────────────────────────────────────────── */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          <StatCard
-            label="Total Projects"
-            value={stats?.total_projects}
-            color="bg-[#d6e0f1]"
-            icon="📁"
-          />
-          <StatCard
-            label="Active Projects"
-            value={stats?.active_projects}
-            color="bg-[#81f9c1]/30"
-            icon="🟢"
-          />
-          <StatCard
-            label="Collaborations"
-            value={stats?.collaborations}
-            color="bg-[#dbe1ff]"
-            icon="👥"
-          />
-          <StatCard
-            label="Documents"
-            value={stats?.total_documents}
-            color="bg-[#f3f4f5]"
-            icon="📄"
-          />
+          {loading ? (
+            [1, 2, 3, 4].map((i) => (
+              <div
+                key={i}
+                className="h-24 bg-white rounded-2xl border border-[#e1e3e4] animate-pulse"
+              />
+            ))
+          ) : (
+            <>
+              <StatCard
+                label="Total Projects"
+                value={stats?.total_projects}
+                color="bg-[#d6e0f1]"
+                icon="📁"
+              />
+              <StatCard
+                label="Active Projects"
+                value={stats?.active_projects}
+                color="bg-[#81f9c1]/30"
+                icon="🟢"
+              />
+              <StatCard
+                label="Collaborations"
+                value={stats?.collaborations}
+                color="bg-[#dbe1ff]"
+                icon="👥"
+              />
+              <StatCard
+                label="Documents"
+                value={stats?.total_documents}
+                color="bg-[#f3f4f5]"
+                icon="📄"
+              />
+            </>
+          )}
         </div>
 
         {statsError && (
@@ -223,11 +257,20 @@ export default function Dashboard() {
                 {[1, 2, 3, 4].map((i) => (
                   <div
                     key={i}
-                    className="bg-white rounded-2xl p-5 border border-[#e1e3e4] animate-pulse"
+                    className="bg-white rounded-2xl p-6 border border-[#e1e3e4] animate-pulse"
                   >
-                    <div className="h-4 bg-[#e1e3e4] rounded w-3/4 mb-3" />
-                    <div className="h-3 bg-[#e1e3e4] rounded w-full mb-2" />
-                    <div className="h-3 bg-[#e1e3e4] rounded w-2/3" />
+                    <div className="flex justify-between mb-4">
+                      <div className="h-5 bg-[#f3f4f5] rounded-lg w-1/2" />
+                      <div className="h-5 bg-[#f3f4f5] rounded-full w-12" />
+                    </div>
+                    <div className="space-y-3 mb-6">
+                      <div className="h-3 bg-[#f3f4f5] rounded w-full" />
+                      <div className="h-3 bg-[#f3f4f5] rounded w-4/5" />
+                    </div>
+                    <div className="flex gap-2 pt-4 border-t border-[#f3f4f5]">
+                      <div className="h-4 bg-[#f3f4f5] rounded w-16" />
+                      <div className="h-4 bg-[#f3f4f5] rounded w-16" />
+                    </div>
                   </div>
                 ))}
               </div>
@@ -279,12 +322,15 @@ export default function Dashboard() {
 
       {/* ── Delete confirmation modal ─────────────────────────────────── */}
       <DeleteConfirmationModal
-        open={!!projectToDelete}
+        open={Boolean(projectToDelete)}
         title="Delete Project"
-        message={`Are you sure you want to delete "${projectToDelete?.name}"? This action is permanent and will remove all associated tasks, documents, and agent logs.`}
+        message={`This action is permanent and will remove all associated tasks, documents, and agent logs.`}
         confirmLabel="Delete Project"
+        itemName={projectToDelete?.name}
         loading={isDeleting}
-        onCancel={() => setProjectToDelete(null)}
+        onCancel={() => {
+          if (!isDeleting) setProjectToDelete(null);
+        }}
         onConfirm={handleConfirmDelete}
       />
     </Layout>

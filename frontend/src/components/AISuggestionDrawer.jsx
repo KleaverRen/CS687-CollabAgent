@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import toast from 'react-hot-toast';
 import { useTask } from '../context/TaskContext';
 
 const SEVERITY_CONFIG = {
@@ -46,15 +47,44 @@ const TYPE_LABELS = {
 };
 
 const TYPE_ICONS = {
-  blocker:          '⊗',
-  split:            '✂',
-  critical_path:    '⚡',
-  priority_rerank:  '↑',
-  teammate_affinity:'👤',
+  blocker: (
+    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M18.36 18.36A9 9 0 015.64 5.64m12.72 12.72A9 9 0 005.64 5.64m12.72 12.72L5.64 5.64" />
+    </svg>
+  ),
+  split: (
+    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M7 4v16m0-8h10m0 0l-4-4m4 4l-4 4" />
+    </svg>
+  ),
+  critical_path: (
+    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+    </svg>
+  ),
+  priority_rerank: (
+    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
+    </svg>
+  ),
+  teammate_affinity: (
+    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a4 4 0 00-4-4h-1M9 20H4v-2a4 4 0 014-4h1m8-4a4 4 0 10-8 0 4 4 0 008 0z" />
+    </svg>
+  ),
 };
 
-function ConfidenceBar({ value, formula, barColor }) {
-  const pct = Math.round((value || 0) * 100);
+const SEVERITY_ORDER = { critical: 0, warning: 1, info: 2 };
+const DEFAULT_ALGORITHM_COUNT = 5;
+const FILTERS = [
+  { id: 'all', label: 'All' },
+  { id: 'critical', label: 'Critical' },
+  { id: 'warning', label: 'Warning' },
+  { id: 'info', label: 'Info' },
+];
+
+const ConfidenceBar = memo(function ConfidenceBar({ value, formula, barColor }) {
+  const pct = Math.round((value ?? 0) * 100);
   return (
     <div className="mt-3">
       <div className="flex items-center justify-between mb-1">
@@ -69,12 +99,14 @@ function ConfidenceBar({ value, formula, barColor }) {
       )}
     </div>
   );
-}
+});
 
-function AffinityMember({ member }) {
+const AffinityMember = memo(function AffinityMember({ member }) {
   const initials = member.full_name?.split(' ').map((n) => n[0]).join('').slice(0, 2) || '?';
   const colors = ['bg-violet-500','bg-blue-500','bg-emerald-500'];
-  const color = colors[(member.full_name?.charCodeAt(0) || 0) % colors.length];
+  const firstChar = member.full_name?.charCodeAt(0);
+  const colorIndex = typeof firstChar === 'number' && !Number.isNaN(firstChar) ? firstChar % colors.length : 0;
+  const color = colors[colorIndex];
   return (
     <div className="flex items-center gap-2 py-1.5">
       <div className={`w-7 h-7 ${color} rounded-full flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0`}>
@@ -91,9 +123,85 @@ function AffinityMember({ member }) {
       </div>
     </div>
   );
+});
+
+function ApplySuggestionModal({ suggestion, loading, onCancel, onConfirm }) {
+  if (!suggestion) return null;
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/45 p-4 backdrop-blur-sm">
+      <section
+        className="w-full max-w-md rounded-xl border border-[#d8dde6] bg-white shadow-2xl"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="apply-suggestion-title"
+      >
+        <div className="flex items-start justify-between gap-4 border-b border-[#e1e3e4] px-5 py-4">
+          <div className="flex items-start gap-3">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-[#d6e0f1] text-[#003fb1]">
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+              </svg>
+            </span>
+            <div>
+              <h2 id="apply-suggestion-title" className="text-base font-bold text-[#191c1d]">
+                Apply suggestion?
+              </h2>
+              <p className="mt-1 text-sm leading-6 text-[#434654]">
+                This will update the task board using the selected AI suggestion.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={loading}
+            className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[#596170] hover:bg-[#f3f4f5] disabled:cursor-not-allowed disabled:opacity-60"
+            aria-label="Close apply suggestion confirmation"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="px-5 pt-4">
+          <div className="rounded-lg border border-[#e1e3e4] bg-[#f8f9fb] px-4 py-3">
+            <p className="text-sm font-semibold text-[#191c1d]">{suggestion.action_label || suggestion.title}</p>
+            <p className="mt-1 text-xs leading-5 text-[#596170]">{suggestion.title}</p>
+          </div>
+        </div>
+
+        <div className="flex flex-col-reverse gap-3 px-5 py-5 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={loading}
+            className="inline-flex min-h-10 items-center justify-center rounded-lg border border-[#b9c0d4] bg-white px-4 text-sm font-semibold text-[#191c1d] transition-colors hover:bg-[#f3f6ff] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={loading}
+            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-[#003fb1] px-4 text-sm font-bold text-white transition-colors hover:bg-[#1353d8] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {loading && (
+              <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+              </svg>
+            )}
+            Apply Suggestion
+          </button>
+        </div>
+      </section>
+    </div>
+  );
 }
 
-function SuggestionCard({ suggestion, onApply, onDismiss, readOnly = false }) {
+const SuggestionCard = memo(function SuggestionCard({ suggestion, onApply, onDismiss, readOnly = false, applying = false }) {
   const cfg = SEVERITY_CONFIG[suggestion.severity] || SEVERITY_CONFIG.info;
 
   return (
@@ -108,9 +216,9 @@ function SuggestionCard({ suggestion, onApply, onDismiss, readOnly = false }) {
             <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide ${cfg.badge}`}>
               {TYPE_LABELS[suggestion.type] || suggestion.type}
             </span>
-            <span className="text-[10px] text-slate-400">{TYPE_ICONS[suggestion.type]}</span>
+            <span className="text-slate-400" aria-hidden="true">{TYPE_ICONS[suggestion.type]}</span>
           </div>
-          <h5 className="text-xs font-bold text-slate-800 leading-snug">{suggestion.title}</h5>
+          <h4 className="text-xs font-bold text-slate-800 leading-snug">{suggestion.title}</h4>
         </div>
       </div>
 
@@ -120,7 +228,7 @@ function SuggestionCard({ suggestion, onApply, onDismiss, readOnly = false }) {
       {suggestion.type === 'teammate_affinity' && suggestion.ranked_members?.length > 0 && (
         <div className="mb-3 border-t border-white/60 pt-2">
           {suggestion.ranked_members.map((m) => (
-            <AffinityMember key={m.user_id} member={m} />
+            <AffinityMember key={m.user_id || m.id || m.full_name} member={m} />
           ))}
         </div>
       )}
@@ -144,51 +252,145 @@ function SuggestionCard({ suggestion, onApply, onDismiss, readOnly = false }) {
       <div className="flex gap-2 mt-3">
         {suggestion.action_label && (
           <button
+            type="button"
             onClick={() => onApply(suggestion)}
-            disabled={readOnly}
+            disabled={readOnly || applying}
             className="flex-1 h-8 text-[11px] font-bold bg-[#003fb1] text-white rounded-xl hover:bg-[#1353d8] transition-colors disabled:bg-[#e1e3e4] disabled:text-[#737686]"
           >
-            {readOnly ? 'Read Only' : suggestion.action_label}
+            {applying ? 'Applying...' : suggestion.action_label}
           </button>
         )}
-        <button
-          onClick={() => onDismiss(suggestion)}
-          className="h-8 px-3 text-[11px] text-slate-400 border border-slate-200 rounded-xl hover:bg-slate-100 transition-colors"
-        >
-          Dismiss
-        </button>
+        {!readOnly && (
+          <button
+            type="button"
+            onClick={() => onDismiss(suggestion)}
+            className="h-8 px-3 text-[11px] text-slate-400 border border-slate-200 rounded-xl hover:bg-slate-100 transition-colors"
+          >
+            Dismiss
+          </button>
+        )}
       </div>
     </div>
   );
-}
+});
 
-export default function AISuggestionDrawer({ open, onClose, readOnly = false }) {
+export default function AISuggestionDrawer({ open, onClose, readOnly = false, algorithmCount = DEFAULT_ALGORITHM_COUNT }) {
   const { suggestions, setSuggestions, applyAction, aiLoading } = useTask();
+  const [applyingId, setApplyingId] = useState(null);
+  const [activeFilter, setActiveFilter] = useState('all');
+  const [pendingSuggestion, setPendingSuggestion] = useState(null);
 
-  const handleDismiss = (suggestion) => {
-    setSuggestions((prev) => prev.filter((s) => s !== suggestion));
-  };
+  const sortedSuggestions = useMemo(
+    () => [...suggestions].sort((a, b) => (SEVERITY_ORDER[a.severity] ?? 3) - (SEVERITY_ORDER[b.severity] ?? 3)),
+    [suggestions]
+  );
+  const visibleSuggestions = useMemo(
+    () => activeFilter === 'all'
+      ? sortedSuggestions
+      : sortedSuggestions.filter((suggestion) => suggestion.severity === activeFilter),
+    [activeFilter, sortedSuggestions]
+  );
+
+  const handleDismiss = useCallback((suggestion) => {
+    if (readOnly) return;
+    setSuggestions((prev) => prev.filter((s) => s.id !== suggestion.id));
+    toast((t) => (
+      <span className="flex items-center gap-3 pr-1">
+        <span>Suggestion dismissed.</span>
+        <button
+          type="button"
+          className="text-xs font-bold text-[#003fb1]"
+          onClick={() => {
+            setSuggestions((prev) => [suggestion, ...prev]);
+            toast.dismiss(t.id);
+          }}
+        >
+          Undo
+        </button>
+        <button
+          type="button"
+          className="grid h-6 w-6 place-items-center rounded-md text-[#737686] transition-colors hover:bg-[#f3f4f5] hover:text-[#191c1d]"
+          onClick={() => toast.dismiss(t.id)}
+          aria-label="Dismiss toast"
+        >
+          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </span>
+    ), { duration: 2500 });
+  }, [readOnly, setSuggestions]);
+
+  const handleApply = useCallback(async (suggestion) => {
+    if (readOnly || applyingId) return;
+    setPendingSuggestion(suggestion);
+  }, [applyingId, readOnly]);
+
+  const handleCancelApply = useCallback(() => {
+    if (applyingId) return;
+    setPendingSuggestion(null);
+  }, [applyingId]);
+
+  const handleConfirmApply = useCallback(async () => {
+    if (!pendingSuggestion || applyingId) return;
+
+    setApplyingId(pendingSuggestion.id);
+    try {
+      await applyAction(pendingSuggestion);
+      setPendingSuggestion(null);
+    } finally {
+      setApplyingId(null);
+    }
+  }, [applyingId, applyAction, pendingSuggestion]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const handleEscape = (event) => {
+      if (event.key !== 'Escape') return;
+      if (pendingSuggestion) {
+        handleCancelApply();
+        return;
+      }
+      onClose();
+    };
+
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [handleCancelApply, onClose, open, pendingSuggestion]);
 
   const criticalCount = suggestions.filter((s) => s.severity === 'critical').length;
   const warningCount  = suggestions.filter((s) => s.severity === 'warning').length;
+
+  useEffect(() => {
+    if (aiLoading) return;
+    setActiveFilter('all');
+  }, [aiLoading]);
 
   return (
     <>
       {/* Backdrop */}
       {open && (
-        <div className="fixed inset-0 z-30 bg-black/10 backdrop-blur-[2px]" onClick={onClose} />
+        <button
+          type="button"
+          aria-label="Close suggestions panel"
+          className="fixed inset-0 z-30 bg-black/10 backdrop-blur-[2px] cursor-default"
+          onClick={onClose}
+        />
       )}
 
       {/* Drawer */}
       <div
-        className={`fixed top-0 right-0 h-full z-40 w-80 bg-white border-l border-[#e1e3e4] shadow-2xl flex flex-col transition-transform duration-300 ease-out
+        role="dialog"
+        aria-modal="true"
+        aria-label="AI Suggestions"
+        className={`fixed top-0 right-0 h-full z-40 w-full max-w-sm bg-white border-l border-[#e1e3e4] shadow-2xl flex flex-col transition-transform duration-300 ease-out
           ${open ? 'translate-x-0' : 'translate-x-full'}`}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-[#e1e3e4] flex-shrink-0">
           <div>
             <h3 className="font-bold text-[#191c1d] text-sm">Suggestions</h3>
-            <p className="text-[10px] text-slate-400 mt-0.5">
+            <p className="text-[10px] text-slate-400 mt-0.5" aria-live="polite">
               {aiLoading
                 ? 'Running analysis…'
                 : suggestions.length === 0
@@ -208,7 +410,7 @@ export default function AISuggestionDrawer({ open, onClose, readOnly = false }) 
                 {warningCount}
               </span>
             )}
-            <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-400 transition-colors">
+            <button type="button" onClick={onClose} aria-label="Close suggestions panel" className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-400 transition-colors">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
@@ -219,40 +421,81 @@ export default function AISuggestionDrawer({ open, onClose, readOnly = false }) 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-4 py-4">
           {aiLoading ? (
-            <div className="flex flex-col items-center justify-center h-48 gap-3">
+            <div className="flex flex-col items-center justify-center h-48 gap-3" role="status" aria-live="polite">
               <div className="relative w-12 h-12">
                 <div className="absolute inset-0 rounded-full border-2 border-[#003fb1]/20 animate-ping" />
                 <div className="absolute inset-1 rounded-full border-2 border-t-[#003fb1] border-transparent animate-spin" />
                 <div className="absolute inset-3 rounded-full bg-[#003fb1]/10" />
               </div>
-              <p className="text-xs text-slate-400">Running 5 workflow algorithms…</p>
+              <p className="text-xs text-slate-400">
+                Running {algorithmCount} workflow algorithm{algorithmCount === 1 ? '' : 's'}...
+              </p>
             </div>
           ) : suggestions.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-48 text-center gap-2">
+            <div className="flex flex-col items-center justify-center h-48 text-center gap-2" role="status" aria-live="polite">
               <div className="w-12 h-12 bg-emerald-100 rounded-2xl flex items-center justify-center text-2xl">✓</div>
               <p className="text-sm font-semibold text-slate-600">Workflow looks healthy</p>
               <p className="text-[11px] text-slate-400">No blockers, split needs, or priority issues detected.</p>
             </div>
           ) : (
-            suggestions.map((s, i) => (
-              <SuggestionCard key={i} suggestion={s} onApply={applyAction} onDismiss={handleDismiss} readOnly={readOnly} />
-            ))
+            <>
+              <div className="flex gap-1 mb-3 p-1 bg-slate-100 rounded-xl" aria-label="Filter suggestions by severity">
+                {FILTERS.map((filter) => {
+                  const selected = activeFilter === filter.id;
+                  return (
+                    <button
+                      key={filter.id}
+                      type="button"
+                      onClick={() => setActiveFilter(filter.id)}
+                      className={`flex-1 h-7 rounded-lg text-[10px] font-bold transition-colors ${
+                        selected ? 'bg-white text-[#003fb1] shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                      }`}
+                      aria-pressed={selected}
+                    >
+                      {filter.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {visibleSuggestions.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-32 text-center gap-1" role="status" aria-live="polite">
+                  <p className="text-sm font-semibold text-slate-600">No {activeFilter} suggestions</p>
+                  <p className="text-[11px] text-slate-400">Change the filter to view other severities.</p>
+                </div>
+              ) : (
+                visibleSuggestions.map((s) => (
+                  <SuggestionCard
+                    key={s.id}
+                    suggestion={s}
+                    onApply={handleApply}
+                    onDismiss={handleDismiss}
+                    readOnly={readOnly}
+                    applying={applyingId === s.id}
+                  />
+                ))
+              )}
+            </>
           )}
         </div>
 
         {/* Footer */}
-        <div className="px-4 py-3 border-t border-[#e1e3e4] flex-shrink-0">
-          <p className="text-[9px] text-slate-300 text-center leading-relaxed">
-            All suggestions are rule-based. Confidence formulas are shown per card.
-            No external ML service is used.
-          </p>
-        </div>
+        {!aiLoading && suggestions.length > 0 && (
+          <div className="px-4 py-3 border-t border-[#e1e3e4] flex-shrink-0">
+            <p className="text-[9px] text-slate-300 text-center leading-relaxed">
+              All suggestions are rule-based. Confidence formulas are shown per card.
+              No external ML service is used.
+            </p>
+          </div>
+        )}
       </div>
 
-      <style>{`
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
-        .animate-fadeIn { animation: fadeIn 0.25s ease-out; }
-      `}</style>
+      <ApplySuggestionModal
+        suggestion={pendingSuggestion}
+        loading={Boolean(applyingId)}
+        onCancel={handleCancelApply}
+        onConfirm={handleConfirmApply}
+      />
     </>
   );
 }

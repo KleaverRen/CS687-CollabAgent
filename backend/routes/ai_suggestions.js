@@ -260,8 +260,7 @@ function reRankPriorities(tasks, edges) {
       return { task: t, score, recommendedPriority, currentPriority };
     })
     .filter((s) => s.recommendedPriority !== s.currentPriority)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 3); // Top 3 misaligned tasks
+    .sort((a, b) => b.score - a.score);
 
   for (const s of scored) {
     suggestions.push({

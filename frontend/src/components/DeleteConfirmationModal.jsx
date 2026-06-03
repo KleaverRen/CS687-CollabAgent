@@ -35,9 +35,7 @@ export default function DeleteConfirmationModal({
               >
                 {title}
               </h2>
-              <p className="mt-1 text-sm leading-6 text-[#434654]">
-                {message}
-              </p>
+              <p className="mt-1 text-sm leading-6 text-[#434654]">{message}</p>
             </div>
           </div>
           <button

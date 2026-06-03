@@ -44,19 +44,44 @@ const DEMO_SUGGESTIONS = [
   { type: 'teammate_affinity', severity: 'info', task_id: 'dt4', task_title: 'AI Suggestion Engine', ranked_members: DEMO_MEMBERS, title: 'Best assignee matches for "AI Suggestion Engine"', description: 'Based on tag-completion overlap across 3 completed tasks.', action_label: 'Assign to Alex Chen', action: { patch_task_id: 'dt4', assigned_to: 'du1' }, confidence: 0.94, confidence_formula: 'tag_overlap / total_completed_tasks × 0.84 + 0.15' },
 ];
 
+const getSuggestionId = (suggestion, index = 0) => {
+  if (suggestion.id) return suggestion.id;
+
+  const action = suggestion.action || {};
+  return [
+    suggestion.type || 'suggestion',
+    suggestion.task_id || suggestion.critical_task_id || action.patch_task_id || action.parent_task_id || 'global',
+    suggestion.title || '',
+    index,
+  ].join(':');
+};
+
+const withSuggestionIds = (suggestions = []) =>
+  suggestions.map((suggestion, index) => ({
+    ...suggestion,
+    id: getSuggestionId(suggestion, index),
+  }));
+
 // ─── Context ─────────────────────────────────────────────────────────────────
 const TaskContext = createContext(null);
 
 export function TaskProvider({ children, demoMode = false }) {
   const [tasks, setTasks] = useState(demoMode ? DEMO_TASKS : []);
   const [edges, setEdges] = useState(demoMode ? DEMO_EDGES : []);
-  const [suggestions, setSuggestions] = useState([]);
+  const [suggestions, setSuggestionsState] = useState([]);
   const [loading, setLoading] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState(
     demoMode ? DEMO_PROJECT_ID : null
   );
   const isDemo = useRef(demoMode);
+
+  const setSuggestions = useCallback((nextSuggestions) => {
+    setSuggestionsState((prev) => {
+      const resolved = typeof nextSuggestions === 'function' ? nextSuggestions(prev) : nextSuggestions;
+      return withSuggestionIds(resolved);
+    });
+  }, []);
 
   // ── Load all tasks + graph for a project ──────────────────────────────────
   const loadTasks = useCallback(async (projectId) => {
@@ -155,9 +180,9 @@ export function TaskProvider({ children, demoMode = false }) {
       }
     }
 
-    setSuggestions((prev) => prev.filter((s) => s !== suggestion));
+    setSuggestions((prev) => prev.filter((s) => s.id !== suggestion.id));
     toast.success('Suggestion applied!');
-  }, [updateTask, createTask, tasks, selectedProjectId]);
+  }, [updateTask, createTask, tasks, selectedProjectId, setSuggestions]);
 
   // ── Run AI analysis ───────────────────────────────────────────────────────
   const runAI = useCallback(async (projectId, taskId = null) => {
@@ -186,7 +211,7 @@ export function TaskProvider({ children, demoMode = false }) {
     } finally {
       setAiLoading(false);
     }
-  }, [tasks]);
+  }, [setSuggestions, tasks]);
 
   const value = {
     tasks, edges, suggestions, members: demoMode ? DEMO_MEMBERS : [],
