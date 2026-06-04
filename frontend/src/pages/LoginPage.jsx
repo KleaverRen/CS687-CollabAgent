@@ -79,7 +79,7 @@ export default function LoginPage() {
                   <label className="text-xs font-semibold text-[#434654] uppercase tracking-wider" htmlFor="password">
                     Password
                   </label>
-                  <a href="#" className="text-xs text-[#003fb1] font-semibold hover:underline">Forgot Password?</a>
+                  <a href="/forgot-password" className="text-xs text-[#003fb1] font-semibold hover:underline">Forgot Password?</a>
                 </div>
                 <div className="relative">
                   <input
@@ -158,9 +158,9 @@ export default function LoginPage() {
 
       <footer className="py-6 px-4 border-t border-[#e1e3e4]">
         <div className="flex flex-wrap justify-center gap-6 text-xs text-[#737686]">
-          <a href="#" className="hover:text-[#003fb1] transition-colors">Privacy Policy</a>
-          <a href="#" className="hover:text-[#003fb1] transition-colors">Terms of Service</a>
-          <a href="#" className="hover:text-[#003fb1] transition-colors">Security</a>
+          <a href="/privacy" className="hover:text-[#003fb1] transition-colors">Privacy Policy</a>
+          <a href="/terms" className="hover:text-[#003fb1] transition-colors">Terms of Service</a>
+          <a href="/security" className="hover:text-[#003fb1] transition-colors">Security</a>
           <span>© 2024 CollabAgent</span>
         </div>
       </footer>

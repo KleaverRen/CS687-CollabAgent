@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useTask } from '../context/TaskContext';
 
 const PRIORITY_CONFIG = {
@@ -54,11 +55,107 @@ export default function TaskCard({
 }) {
   const { updateTask } = useTask();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [menuPosition, setMenuPosition] = useState(null);
+  const menuButtonRef = useRef(null);
+  const menuRef = useRef(null);
 
   const p = PRIORITY_CONFIG[task.priority] || PRIORITY_CONFIG.medium;
 
   const hasBlockers   = parseInt(task.blocker_count) > 0;
   const hasDependents = parseInt(task.dependent_count) > 0;
+  const positionMenu = () => {
+    const button = menuButtonRef.current;
+    if (!button) return;
+
+    const rect = button.getBoundingClientRect();
+    const menuWidth = 160;
+    const estimatedMenuHeight = 222;
+    const viewportPadding = 12;
+    const availableBelow = window.innerHeight - rect.bottom - viewportPadding;
+    const shouldOpenUp =
+      availableBelow < estimatedMenuHeight &&
+      rect.top > estimatedMenuHeight + viewportPadding;
+
+    const top = shouldOpenUp
+      ? Math.max(viewportPadding, rect.top - estimatedMenuHeight - 8)
+      : Math.min(
+          rect.bottom + 8,
+          window.innerHeight - estimatedMenuHeight - viewportPadding,
+        );
+    const left = Math.min(
+      Math.max(viewportPadding, rect.right - menuWidth),
+      window.innerWidth - menuWidth - viewportPadding,
+    );
+
+    setMenuPosition({
+      left,
+      top: Math.max(viewportPadding, top),
+      maxHeight: Math.max(
+        160,
+        Math.min(estimatedMenuHeight, window.innerHeight - viewportPadding * 2),
+      ),
+    });
+  };
+
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+
+    positionMenu();
+    const handlePointerDown = (event) => {
+      if (
+        menuRef.current?.contains(event.target) ||
+        menuButtonRef.current?.contains(event.target)
+      ) {
+        return;
+      }
+      setMenuOpen(false);
+    };
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') setMenuOpen(false);
+    };
+
+    window.addEventListener('resize', positionMenu);
+    window.addEventListener('scroll', positionMenu, true);
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.removeEventListener('resize', positionMenu);
+      window.removeEventListener('scroll', positionMenu, true);
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [menuOpen]);
+
+  const actionMenu =
+    menuOpen && !readOnly && menuPosition
+      ? createPortal(
+          <div
+            ref={menuRef}
+            className="fixed z-[100] w-40 overflow-y-auto rounded-xl border border-[#e1e3e4] bg-white py-1 shadow-xl"
+            style={{
+              left: menuPosition.left,
+              top: menuPosition.top,
+              maxHeight: menuPosition.maxHeight,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {['todo','in_progress','blocked','done'].map((s) => (
+              <button key={s} className="w-full text-left px-3 py-2 text-xs text-[#434654] hover:bg-slate-50 flex items-center gap-2"
+                onClick={() => { updateTask(task.id, { status: s }); setMenuOpen(false); }}>
+                <span className={STATUS_CONFIG[s].color}>{STATUS_CONFIG[s].icon}</span>
+                {STATUS_CONFIG[s].label}
+              </button>
+            ))}
+            <hr className="my-1 border-[#e1e3e4]" />
+            <button className="w-full text-left px-3 py-2 text-xs text-red-500 hover:bg-red-50"
+              onClick={() => { onDelete?.(task); setMenuOpen(false); }}>
+              Delete task
+            </button>
+          </div>,
+          document.body,
+        )
+      : null;
 
   return (
     <div
@@ -85,8 +182,16 @@ export default function TaskCard({
             <span className="text-red-500 animate-pulse" title="Blocked">⊗</span>
           )}
           {!readOnly && <button
+            ref={menuButtonRef}
             className="opacity-0 group-hover:opacity-100 w-6 h-6 flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-400 transition-all"
-            onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              setMenuOpen((open) => {
+                const nextOpen = !open;
+                if (nextOpen) window.requestAnimationFrame(positionMenu);
+                return nextOpen;
+              });
+            }}
             aria-label="Task actions"
             aria-expanded={menuOpen}
           >
@@ -147,26 +252,7 @@ export default function TaskCard({
         </div>
       </div>
 
-      {/* Dropdown menu */}
-      {menuOpen && !readOnly && (
-        <div
-          className="absolute right-2 top-10 z-50 bg-white border border-[#e1e3e4] rounded-xl shadow-lg py-1 w-40"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {['todo','in_progress','blocked','done'].map((s) => (
-            <button key={s} className="w-full text-left px-3 py-2 text-xs text-[#434654] hover:bg-slate-50 flex items-center gap-2"
-              onClick={() => { updateTask(task.id, { status: s }); setMenuOpen(false); }}>
-              <span className={STATUS_CONFIG[s].color}>{STATUS_CONFIG[s].icon}</span>
-              {STATUS_CONFIG[s].label}
-            </button>
-          ))}
-          <hr className="my-1 border-[#e1e3e4]" />
-          <button className="w-full text-left px-3 py-2 text-xs text-red-500 hover:bg-red-50"
-            onClick={() => { onDelete?.(task); setMenuOpen(false); }}>
-            Delete task
-          </button>
-        </div>
-      )}
+      {actionMenu}
     </div>
   );
 }

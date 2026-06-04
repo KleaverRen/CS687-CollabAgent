@@ -233,9 +233,9 @@ export default function LandingPage() {
           <div className="border-t border-[#e1e3e4] pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
             <p className="text-xs text-[#737686]">© 2024 CollabAgent Systems Inc. All rights reserved.</p>
             <div className="flex gap-6 text-xs text-[#737686]">
-              <a href="#" className="hover:text-[#003fb1] transition-colors">Privacy Policy</a>
-              <a href="#" className="hover:text-[#003fb1] transition-colors">Terms of Service</a>
-              <a href="#" className="hover:text-[#003fb1] transition-colors">Security</a>
+              <a href="/privacy" className="hover:text-[#003fb1] transition-colors">Privacy Policy</a>
+              <a href="/terms" className="hover:text-[#003fb1] transition-colors">Terms of Service</a>
+              <a href="/security" className="hover:text-[#003fb1] transition-colors">Security</a>
             </div>
           </div>
         </div>

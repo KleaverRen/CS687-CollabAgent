@@ -4,6 +4,11 @@ const pool = require("../../config/database");
 const { authenticate } = require("../../middleware/auth");
 const eventBroker = require("../../services/eventBroker");
 const generationService = require("../../services/generationService");
+const {
+  canReadProject,
+  canStudentWorkOnProject,
+  canWriteProject,
+} = require("../../services/projectAccess");
 
 function normalizePriority(priority) {
   const normalized = String(priority || "medium").toLowerCase();
@@ -31,6 +36,11 @@ router.post("/meeting", authenticate, requireStudentAgent, async (req, res) => {
       return res
         .status(400)
         .json({ error: "Transcript and projectId are required" });
+    }
+    if (!(await canStudentWorkOnProject(req.user, projectId))) {
+      return res
+        .status(404)
+        .json({ error: "Project not found or unauthorized" });
     }
 
     const fallbackResult = {
@@ -104,6 +114,11 @@ router.get("/activity", authenticate, async (req, res) => {
     if (!projectId) {
       return res.status(400).json({ error: "projectId is required" });
     }
+    if (!(await canReadProject(req.user, projectId))) {
+      return res
+        .status(404)
+        .json({ error: "Project not found or unauthorized" });
+    }
 
     const pageSize = Math.min(Math.max(parseInt(rawLimit, 10) || 50, 1), 200);
     const params = [projectId];
@@ -149,6 +164,11 @@ router.post("/activity", authenticate, async (req, res) => {
       return res
         .status(400)
         .json({ error: "projectId and actionType are required" });
+    }
+    if (!(await canWriteProject(req.user, projectId))) {
+      return res
+        .status(404)
+        .json({ error: "Project not found or unauthorized" });
     }
 
     const eventType = `ai_workbench.${String(actionType)

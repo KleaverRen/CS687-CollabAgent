@@ -53,13 +53,18 @@ Goal: confirm document ingestion and RAG question answering works.
    Document title:
 
    ```text
-   Phase 1 MAS Feasibility Notes
+   Phase 1: Multi-Agent System (MAS) Deployment Plan
    ```
 
    Document content:
 
    ```text
-   Phase 1 focuses on requirements gathering, use case discovery, technical feasibility, data governance, risk analysis, and ROI evaluation for a multi-agent AI framework in the Data Science division.
+   Project Goal: Deploy a Multi-Agentic AI framework in the Data Science division.
+   Workstreams for Phase 1:
+   1. Use Case & Agent Role Definition: Identify bottlenecks in EDA and reporting.
+   2. Technical Feasibility: Evaluate LangGraph and AutoGen.
+   3. Data Readiness: Audit Snowflake access patterns and PII redaction.
+   4. ROI & Risk: Estimate token costs and document hallucination risks.
    ```
 
 3. Click **Queue**.
@@ -114,24 +119,18 @@ Goal: confirm bulk task generation works.
 2. Paste a long task-generation prompt, such as:
 
    ```text
-   Act as a Principal AI Architect and Lead Technical Project Manager specializing in Multi-Agent Systems and enterprise data science workflows.
-
-   I need a comprehensive, actionable task list for "Phase 1: Requirements and Feasibility Study" for deploying a Multi-Agentic AI framework within our Data Science division.
-
-   Structure the tasks into these workstreams:
-   1. Use Case & Agent Role Definition
-   2. Technical Feasibility & Architecture Assessment
-   3. Data Readiness & Security Compliance
-   4. Cost, ROI, & Risk Analysis
-
-   For each task, provide a task title, description, complexity/effort, and potential blocker.
+   Based on the Phase 1 MAS Deployment Plan documentation I just indexed, generate a comprehensive, actionable task list. 
+   
+   Please break it down by the specific workstreams mentioned in the file (Use Case, Technical Feasibility, Data Readiness, and ROI). 
+   For each task, provide a title, description, and potential blocker.
    ```
 
 3. Click **Send**.
 
 4. Expected result:
    - A **Generated Task List** appears.
-   - Tasks are labeled by workstream.
+   - Tasks are labeled by workstream (matching the ingested doc).
+   - The technical details (e.g., "LangGraph", "Snowflake") from the doc appear in task descriptions.
    - Each task includes title, description, priority, complexity, and blocker details.
 
 5. Click **Create All**.

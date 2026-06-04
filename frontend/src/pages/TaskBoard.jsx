@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { TaskProvider, useTask } from '../context/TaskContext';
 import TaskCard from '../components/TaskCard';
-import AISuggestionDrawer from '../components/AISuggestionDrawer';
+import AISuggestionDrawer, { TaskAttributeAISuggestionDrawer } from '../components/AISuggestionDrawer';
 import DependencyGraph from '../components/DependencyGraph';
 import AffinityScorer from '../components/AffinityScorer';
 import Layout from '../components/Layout';
@@ -25,7 +25,16 @@ function NewTaskModal({ projectId, onClose }) {
     title: '', description: '', priority: 'low', deadline: '', estimated_hours: '', tags: '', assigned_to: null,
   });
   const [saving, setSaving] = useState(false);
+  const [members, setMembers] = useState([]);
+  const [suggestionDrawerOpen, setSuggestionDrawerOpen] = useState(false);
   const tags = form.tags.split(',').map((t) => t.trim()).filter(Boolean);
+
+  useEffect(() => {
+    if (!projectId || projectId.startsWith('demo-')) return;
+    api.get(`/projects/${projectId}`)
+      .then((r) => setMembers(r.data.project?.members || []))
+      .catch(() => setMembers([]));
+  }, [projectId]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -41,6 +50,15 @@ function NewTaskModal({ projectId, onClose }) {
     onClose();
   };
 
+  const handleSuggestedField = (field, value) => {
+    setForm((prev) => ({
+      ...prev,
+      [field]: field === 'estimated_hours' && value !== '' && value !== null
+        ? String(value)
+        : value || (field === 'assigned_to' ? null : ''),
+    }));
+  };
+
   const labelCls = 'block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5';
   const inputCls = 'w-full h-10 px-3 rounded-xl border border-[#c3c5d7] text-sm focus:border-[#003fb1] focus:ring-2 focus:ring-[#003fb1]/20 outline-none transition-all';
 
@@ -54,6 +72,16 @@ function NewTaskModal({ projectId, onClose }) {
           </button>
         </div>
         <form id="newTaskForm" onSubmit={handleSubmit} className={clsx('flex-1', 'overflow-y-auto', 'px-6', 'py-5', 'space-y-4')}>
+          <div className={clsx('flex', 'justify-end')}>
+            <button
+              type="button"
+              onClick={() => setSuggestionDrawerOpen(true)}
+              disabled={!form.title.trim() && !form.description.trim()}
+              className={clsx('h-9', 'rounded-xl', 'bg-[#d6e0f1]', 'px-3', 'text-xs', 'font-bold', 'text-[#003fb1]', 'transition-colors', 'hover:bg-[#c5d6f0]', 'disabled:cursor-not-allowed', 'disabled:opacity-50')}
+            >
+              Suggest Fields
+            </button>
+          </div>
           <div>
             <label className={labelCls}>Title *</label>
             <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })}
@@ -104,6 +132,17 @@ function NewTaskModal({ projectId, onClose }) {
           </button>
         </div>
       </div>
+
+      <TaskAttributeAISuggestionDrawer
+        open={suggestionDrawerOpen}
+        onClose={() => setSuggestionDrawerOpen(false)}
+        projectId={projectId}
+        title={form.title}
+        description={form.description}
+        form={form}
+        members={members}
+        onChange={handleSuggestedField}
+      />
     </div>
   );
 }

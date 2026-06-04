@@ -6,27 +6,17 @@ const agentGate = require('../../middleware/agentGate');
 const eventBroker = require('../../services/eventBroker');
 const generationService = require('../../services/generationService');
 const { recordProjectEvent } = require('../../services/notificationService');
+const {
+  canAdviseProject,
+  canReadProject,
+  canWriteProject,
+} = require('../../services/projectAccess');
 
 function requireAdvisorAgent(req, res, next) {
   if (!['advisor', 'faculty'].includes(req.user?.role)) {
     return res.status(403).json({ error: 'Feedback Agent is available to advisors only.' });
   }
   next();
-}
-
-async function canReadProject(user, projectId) {
-  const result = await pool.query(
-    `SELECT 1
-     FROM projects p
-     WHERE p.id = $1
-       AND (
-         p.owner_id = $2
-         OR p.id IN (SELECT project_id FROM project_members WHERE user_id = $2)
-         OR p.visibility = 'public'
-       )`,
-    [projectId, user.id],
-  );
-  return result.rows.length > 0;
 }
 
 // POST /api/agents/feedback/submit - Submit feedback and generate suggested responses
@@ -36,6 +26,9 @@ router.post('/submit', authenticate, requireAdvisorAgent, async (req, res) => {
     
     if (!projectId || !body) {
       return res.status(400).json({ error: 'projectId and body are required' });
+    }
+    if (!(await canAdviseProject(req.user, projectId))) {
+      return res.status(404).json({ error: 'Project not found or unauthorized' });
     }
 
     const fallbackResult = {
@@ -175,6 +168,17 @@ router.post('/respond', authenticate, async (req, res) => {
       return res.status(400).json({ error: 'feedbackId and responseBody are required' });
     }
 
+    const feedback = await pool.query(
+      `SELECT id, project_id FROM feedback WHERE id = $1`,
+      [feedbackId],
+    );
+    if (
+      !feedback.rows.length ||
+      !(await canWriteProject(req.user, feedback.rows[0].project_id))
+    ) {
+      return res.status(404).json({ error: 'Feedback not found' });
+    }
+
     // Insert response
     await pool.query(
       `INSERT INTO feedback_responses (feedback_id, student_id, body)
@@ -202,6 +206,17 @@ router.post('/resolve', authenticate, agentGate, async (req, res) => {
     
     if (!feedbackId) {
       return res.status(400).json({ error: 'feedbackId is required' });
+    }
+
+    const feedback = await pool.query(
+      `SELECT id, project_id FROM feedback WHERE id = $1`,
+      [feedbackId],
+    );
+    if (
+      !feedback.rows.length ||
+      !(await canAdviseProject(req.user, feedback.rows[0].project_id))
+    ) {
+      return res.status(404).json({ error: 'Feedback not found' });
     }
 
     const result = await pool.query(

@@ -12,6 +12,26 @@ const generateToken = (userId) =>
     expiresIn: process.env.JWT_EXPIRES_IN || '7d',
   });
 
+const sessionCookieOptions = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: 'lax',
+  path: '/',
+  maxAge: 7 * 24 * 60 * 60 * 1000,
+};
+
+function setSessionCookie(res, token) {
+  res.cookie('collabagent_session', token, sessionCookieOptions);
+}
+
+function clearSessionCookie(res) {
+  res.clearCookie('collabagent_session', {
+    path: sessionCookieOptions.path,
+    sameSite: sessionCookieOptions.sameSite,
+    secure: sessionCookieOptions.secure,
+  });
+}
+
 // POST /api/auth/register
 router.post(
   '/register',
@@ -55,10 +75,10 @@ router.post(
 
       const user = result.rows[0];
       const token = generateToken(user.id);
+      setSessionCookie(res, token);
 
       res.status(201).json({
         message: 'Account created successfully',
-        token,
         user: {
           id: user.id,
           full_name: user.full_name,
@@ -113,10 +133,10 @@ router.post(
       }
 
       const token = generateToken(user.id);
+      setSessionCookie(res, token);
 
       res.json({
         message: 'Login successful',
-        token,
         user: {
           id: user.id,
           full_name: user.full_name,
@@ -139,8 +159,8 @@ router.get('/me', authenticate, (req, res) => {
 });
 
 // POST /api/auth/logout
-router.post('/logout', authenticate, async (req, res) => {
-  // Stateless JWT: client deletes token. With sessions table you'd delete here.
+router.post('/logout', async (req, res) => {
+  clearSessionCookie(res);
   res.json({ message: 'Logged out successfully' });
 });
 

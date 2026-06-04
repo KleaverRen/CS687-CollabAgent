@@ -1,6 +1,7 @@
 import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import { useTask } from '../context/TaskContext';
+import api from '../utils/api';
 
 const SEVERITY_CONFIG = {
   critical: {
@@ -82,6 +83,237 @@ const FILTERS = [
   { id: 'warning', label: 'Warning' },
   { id: 'info', label: 'Info' },
 ];
+
+const PRIORITIES = ['low', 'medium', 'high', 'critical'];
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function formatPriority(value) {
+  return value ? value.charAt(0).toUpperCase() + value.slice(1) : 'Medium';
+}
+
+function formatAssignee(value, members) {
+  if (!value) return 'Unassigned';
+  return members.find((member) => member.id === value)?.full_name || 'Unassigned';
+}
+
+function SuggestionField({
+  label,
+  children,
+  canAccept = true,
+  onAccept,
+}) {
+  return (
+    <div className="rounded-xl border border-[#e1e3e4] bg-white p-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{label}</span>
+        <button
+          type="button"
+          onClick={onAccept}
+          disabled={!canAccept}
+          className="h-7 rounded-lg bg-[#003fb1] px-2.5 text-[10px] font-bold text-white transition-colors hover:bg-[#1353d8] disabled:cursor-not-allowed disabled:bg-[#e1e3e4] disabled:text-[#737686]"
+        >
+          Accept Suggestion
+        </button>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+export function TaskAttributeAISuggestionDrawer({
+  open,
+  onClose,
+  projectId,
+  title,
+  description,
+  form,
+  members = [],
+  onChange,
+  provider = 'gemini',
+}) {
+  const [suggestion, setSuggestion] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const hasEnoughInput = title.trim().length > 2 || description.trim().length > 8;
+
+  const fetchSuggestion = useCallback(async () => {
+    if (!hasEnoughInput) {
+      setError('Add a task title or description first.');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    try {
+      const { data } = await api.post('/tasks/suggest', {
+        project_id: UUID_PATTERN.test(projectId || '') ? projectId : undefined,
+        title,
+        description,
+        provider,
+      });
+      setSuggestion(data.suggestion);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Failed to generate suggestions.');
+    } finally {
+      setLoading(false);
+    }
+  }, [description, hasEnoughInput, projectId, provider, title]);
+
+  useEffect(() => {
+    if (open && !suggestion && !loading && hasEnoughInput) {
+      fetchSuggestion();
+    }
+  }, [fetchSuggestion, hasEnoughInput, loading, open, suggestion]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const handleEscape = (event) => {
+      if (event.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [onClose, open]);
+
+  const updateDraft = (field, value) => {
+    setSuggestion((prev) => ({ ...(prev || {}), [field]: value }));
+  };
+
+  const acceptField = (field) => {
+    if (!suggestion) return;
+    onChange(field, suggestion[field] ?? '');
+  };
+
+  return (
+    <>
+      {open && (
+        <button
+          type="button"
+          aria-label="Close AI task suggestions"
+          className="fixed inset-0 z-[60] bg-black/10 backdrop-blur-[2px]"
+          onClick={onClose}
+        />
+      )}
+
+      <aside
+        role="dialog"
+        aria-modal="true"
+        aria-label="AI task attribute suggestions"
+        className={`fixed right-0 top-0 z-[70] flex h-full w-full max-w-sm flex-col border-l border-[#e1e3e4] bg-[#f8f9fb] shadow-2xl transition-transform duration-300 ease-out ${
+          open ? 'translate-x-0' : 'translate-x-full'
+        }`}
+      >
+        <div className="flex items-center justify-between border-b border-[#e1e3e4] bg-white px-5 py-4">
+          <div>
+            <h3 className="text-sm font-bold text-[#191c1d]">AI Task Suggestions</h3>
+            <p className="mt-0.5 text-[10px] text-slate-400">
+              Review, edit, then accept fields into the task form.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="grid h-8 w-8 place-items-center rounded-lg text-slate-400 hover:bg-slate-100"
+            aria-label="Close AI task suggestions"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
+          <button
+            type="button"
+            onClick={fetchSuggestion}
+            disabled={loading || !hasEnoughInput}
+            className="flex h-9 w-full items-center justify-center gap-2 rounded-xl bg-[#003fb1] text-xs font-bold text-white transition-colors hover:bg-[#1353d8] disabled:cursor-not-allowed disabled:bg-[#e1e3e4] disabled:text-[#737686]"
+          >
+            {loading && (
+              <svg className="h-3.5 w-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+              </svg>
+            )}
+            {loading ? 'Generating...' : suggestion ? 'Regenerate Suggestions' : 'Generate Suggestions'}
+          </button>
+
+          {error && (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+              {error}
+            </div>
+          )}
+
+          {!suggestion && !loading && !error && (
+            <div className="rounded-xl border border-dashed border-[#c3c5d7] bg-white px-4 py-6 text-center text-xs text-slate-400">
+              Enter a title or description, then generate suggestions.
+            </div>
+          )}
+
+          {suggestion && (
+            <>
+              <SuggestionField label="Priority" onAccept={() => acceptField('priority')}>
+                <select
+                  value={suggestion.priority || form.priority || 'medium'}
+                  onChange={(event) => updateDraft('priority', event.target.value)}
+                  className="h-10 w-full rounded-xl border border-[#c3c5d7] bg-white px-3 text-sm outline-none focus:border-[#003fb1]"
+                >
+                  {PRIORITIES.map((priority) => (
+                    <option key={priority} value={priority}>{formatPriority(priority)}</option>
+                  ))}
+                </select>
+              </SuggestionField>
+
+              <SuggestionField label="Estimated Hours" onAccept={() => acceptField('estimated_hours')}>
+                <input
+                  type="number"
+                  min="0.5"
+                  step="0.5"
+                  value={suggestion.estimated_hours ?? ''}
+                  onChange={(event) => updateDraft('estimated_hours', event.target.value)}
+                  className="h-10 w-full rounded-xl border border-[#c3c5d7] bg-white px-3 text-sm outline-none focus:border-[#003fb1]"
+                />
+              </SuggestionField>
+
+              <SuggestionField label="Assignee" onAccept={() => acceptField('assigned_to')}>
+                <select
+                  value={suggestion.assigned_to || ''}
+                  onChange={(event) => updateDraft('assigned_to', event.target.value || null)}
+                  className="h-10 w-full rounded-xl border border-[#c3c5d7] bg-white px-3 text-sm outline-none focus:border-[#003fb1]"
+                >
+                  <option value="">Unassigned</option>
+                  {members.map((member) => (
+                    <option key={member.id} value={member.id}>
+                      {member.full_name}{member.member_role ? ` (${member.member_role})` : ''}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-[10px] text-slate-400">
+                  Suggested: {formatAssignee(suggestion.assigned_to, members)}
+                </p>
+              </SuggestionField>
+
+              <SuggestionField label="Deadline" onAccept={() => acceptField('deadline')}>
+                <input
+                  type="date"
+                  value={suggestion.deadline || ''}
+                  onChange={(event) => updateDraft('deadline', event.target.value || null)}
+                  className="h-10 w-full rounded-xl border border-[#c3c5d7] bg-white px-3 text-sm outline-none focus:border-[#003fb1]"
+                />
+              </SuggestionField>
+
+              {suggestion.rationale && (
+                <div className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-[11px] leading-5 text-blue-800">
+                  {suggestion.rationale}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </aside>
+    </>
+  );
+}
 
 const ConfidenceBar = memo(function ConfidenceBar({ value, formula, barColor }) {
   const pct = Math.round((value ?? 0) * 100);

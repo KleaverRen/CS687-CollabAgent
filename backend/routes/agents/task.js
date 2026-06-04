@@ -210,6 +210,42 @@ function looksLikeTaskBreakdownRequest(request) {
 }
 
 /**
+ * Detects if the user wants tasks based on existing indexed knowledge.
+ */
+function looksLikeRAGAugmentedTaskRequest(request) {
+  const text = String(request || "").toLowerCase();
+  return /\b(based on|from|using|referencing|according to)\b.*\b(docs?|documentation|notes|knowledge|research|proposal|paper|files?)\b/.test(
+    text,
+  );
+}
+
+/**
+ * Internal helper to simulate/call RAG query for context.
+ * In a full implementation, this would call your RAG service directly.
+ */
+async function fetchKnowledgeContext(projectId, query) {
+  try {
+    // We assume the internal RAG logic is accessible.
+    // If your RAG logic is strictly in another route, you can refactor it into a service.
+    const response = await pool.query(
+      `SELECT content FROM documents 
+       WHERE project_id = $1 AND embedding_status = 'indexed'
+       ORDER BY created_at DESC LIMIT 3`,
+      [projectId],
+    );
+
+    if (response.rows.length === 0) return "";
+
+    return response.rows
+      .map((r) => r.content.substring(0, 1000))
+      .join("\n---\n");
+  } catch (err) {
+    console.error("[TaskAgent] Knowledge retrieval failed:", err);
+    return "";
+  }
+}
+
+/**
  * Detect if the user is asking for recommendations or next steps.
  */
 function looksLikeRecommendationRequest(request) {
@@ -404,11 +440,29 @@ router.post("/parse", authenticate, requireStudentAgent, async (req, res) => {
         .status(400)
         .json({ error: "Request text and projectId are required" });
     }
+    if (!(await canStudentWorkOnProject(req.user, projectId))) {
+      return res
+        .status(404)
+        .json({ error: "Project not found or unauthorized" });
+    }
 
     if (looksLikeTaskBreakdownRequest(request)) {
       const fallbackTasks = fallbackPhaseOneTasks();
+      let knowledgeContext = "";
+
+      // NEW: Link with Knowledge Agent if the user references documentation
+      if (looksLikeRAGAugmentedTaskRequest(request)) {
+        knowledgeContext = await fetchKnowledgeContext(projectId, request);
+        if (knowledgeContext) {
+          console.log(
+            "[TaskAgent] Augmented generation with project knowledge.",
+          );
+        }
+      }
+
       const systemPrompt = `You are the CollabAgent Task Management AI.
 Generate a comprehensive but actionable task breakdown from the user's project planning request.
+${knowledgeContext ? `\nUSE THIS PROJECT CONTEXT FOR ACCURACY:\n${knowledgeContext}\n` : ""}
 Return strictly valid JSON in this exact shape:
 {
   "tasks": [
@@ -984,6 +1038,11 @@ router.get(
 
       if (!projectId) {
         return res.status(400).json({ error: "projectId is required" });
+      }
+      if (!(await canStudentWorkOnProject(req.user, projectId))) {
+        return res
+          .status(404)
+          .json({ error: "Project not found or unauthorized" });
       }
 
       // Simple priority sorting logic

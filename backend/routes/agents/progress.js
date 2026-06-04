@@ -4,6 +4,7 @@ const pool = require('../../config/database');
 const { authenticate } = require('../../middleware/auth');
 const eventBroker = require('../../services/eventBroker');
 const generationService = require('../../services/generationService');
+const { canAdviseProject } = require('../../services/projectAccess');
 
 function requireAdvisorAgent(req, res, next) {
   if (!['advisor', 'faculty'].includes(req.user?.role)) {
@@ -19,6 +20,9 @@ router.get('/dashboard', authenticate, requireAdvisorAgent, async (req, res) => 
     
     if (!projectId) {
       return res.status(400).json({ error: 'projectId is required' });
+    }
+    if (!(await canAdviseProject(req.user, projectId))) {
+      return res.status(404).json({ error: 'Project not found or unauthorized' });
     }
 
     // 1. Task metrics
@@ -60,6 +64,9 @@ router.get('/risks', authenticate, requireAdvisorAgent, async (req, res) => {
   try {
     const { projectId } = req.query;
     if (!projectId) return res.status(400).json({ error: 'projectId is required' });
+    if (!(await canAdviseProject(req.user, projectId))) {
+      return res.status(404).json({ error: 'Project not found or unauthorized' });
+    }
 
     const result = await pool.query(
       `SELECT * FROM risk_register 
@@ -87,6 +94,9 @@ router.get('/report', authenticate, requireAdvisorAgent, async (req, res) => {
   try {
     const { projectId, provider = null } = req.query;
     if (!projectId) return res.status(400).json({ error: 'projectId is required' });
+    if (!(await canAdviseProject(req.user, projectId))) {
+      return res.status(404).json({ error: 'Project not found or unauthorized' });
+    }
 
     // Gather raw data for the LLM
     const [tasks, feedback, risks] = await Promise.all([

@@ -6,6 +6,7 @@ const eventBroker = require('../services/eventBroker');
 const { authenticate } = require('../middleware/auth');
 const { extractText, getFileType } = require('../services/fileExtractionService');
 const { updateDocumentStatus } = require('../services/documentStatusService');
+const { canReadProject, canWriteProject } = require('../services/projectAccess');
 
 // Boot background RAG consumers for the document.created event published here.
 require('../services/documentService');
@@ -46,18 +47,22 @@ async function requireProjectAccess(req, res, next) {
   if (sendValidationErrors(req, res)) return undefined;
 
   try {
-    const result = await pool.query(
-      `SELECT id FROM projects
-       WHERE id = $1 AND (
-         owner_id = $2
-         OR id IN (SELECT project_id FROM project_members WHERE user_id = $2)
-         OR visibility = 'public'
-       )`,
-      [req.params.id, req.user.id],
-    );
-
-    if (result.rows.length === 0) {
+    if (!(await canReadProject(req.user, req.params.id))) {
       return res.status(404).json({ error: 'Project not found' });
+    }
+
+    return next();
+  } catch (err) {
+    return next(err);
+  }
+}
+
+async function requireProjectWriteAccess(req, res, next) {
+  if (sendValidationErrors(req, res)) return undefined;
+
+  try {
+    if (!(await canWriteProject(req.user, req.params.id))) {
+      return res.status(404).json({ error: 'Project not found or unauthorized' });
     }
 
     return next();
@@ -173,7 +178,7 @@ router.get(
 router.post(
   '/',
   [param('id').isUUID().withMessage('Valid project ID is required')],
-  requireProjectAccess,
+  requireProjectWriteAccess,
   (req, res, next) => {
     upload.single('file')(req, res, (err) => {
       if (err) return next(err);

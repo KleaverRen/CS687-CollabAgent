@@ -4,6 +4,7 @@ const { body, query, validationResult } = require("express-validator");
 const pool = require("../config/database");
 const { authenticate } = require("../middleware/auth");
 const { recordProjectEvent } = require("../services/notificationService");
+const { canReadProject } = require("../services/projectAccess");
 
 // All project routes require auth
 router.use(authenticate);
@@ -38,24 +39,6 @@ const projectValidators = [
     .notEmpty()
     .withMessage("Advisor name required"),
 ];
-
-async function canReadProject(user, projectId) {
-  const result = await pool.query(
-    `SELECT 1
-     FROM projects p
-     WHERE p.id = $1
-       AND (
-         p.owner_id = $2
-         OR p.id IN (SELECT project_id FROM project_members WHERE user_id = $2)
-         OR p.visibility = 'public'
-         OR (p.visibility = 'institution' AND EXISTS (
-           SELECT 1 FROM users u WHERE u.id = p.owner_id AND u.institution = $3
-         ))
-       )`,
-    [projectId, user.id, user.institution || null],
-  );
-  return result.rows.length > 0;
-}
 
 async function updateProject(req, res) {
   if (!requireAdvisor(req, res)) return;
@@ -382,8 +365,12 @@ router.post(
       quarter,
     } = req.body;
     const finalAdvisorName = advisor_name || req.user.full_name;
+    let client;
     try {
-      const result = await pool.query(
+      client = await pool.connect();
+      await client.query("BEGIN");
+
+      const result = await client.query(
         `INSERT INTO projects (name, description, advisor_name, owner_id, visibility, tags, quarter)
          VALUES ($1, $2, $3, $4, $5, $6, $7)
          RETURNING *`,
@@ -398,7 +385,7 @@ router.post(
         ],
       );
       // Auto-add owner as member
-      await pool.query(
+      await client.query(
         `INSERT INTO project_members (project_id, user_id, member_role)
          VALUES ($1, $2, 'owner') ON CONFLICT DO NOTHING`,
         [result.rows[0].id, req.user.id],
@@ -413,11 +400,15 @@ router.post(
           name: result.rows[0].name,
           quarter: result.rows[0].quarter,
         },
-      });
+      }, client);
+      await client.query("COMMIT");
       res.status(201).json({ project: result.rows[0] });
     } catch (err) {
+      if (client) await client.query("ROLLBACK");
       console.error(err);
       res.status(500).json({ error: "Internal server error" });
+    } finally {
+      if (client) client.release();
     }
   },
 );
@@ -425,15 +416,15 @@ router.post(
 // GET /api/projects/:id
 router.get("/:id", async (req, res) => {
   try {
+    if (!(await canReadProject(req.user, req.params.id))) {
+      return res.status(404).json({ error: "Project not found" });
+    }
+
     const result = await pool.query(
       `SELECT p.*, u.full_name as owner_name FROM projects p
        JOIN users u ON p.owner_id = u.id
-       WHERE p.id = $1 AND (
-         p.owner_id = $2 OR
-         p.id IN (SELECT project_id FROM project_members WHERE user_id = $2) OR
-         p.visibility = 'public'
-       )`,
-      [req.params.id, req.user.id],
+       WHERE p.id = $1`,
+      [req.params.id],
     );
     if (result.rows.length === 0)
       return res.status(404).json({ error: "Project not found" });

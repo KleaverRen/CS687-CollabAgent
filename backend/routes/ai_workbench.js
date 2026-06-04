@@ -1,25 +1,11 @@
 const express = require("express");
 const pool = require("../config/database");
 const { authenticate } = require("../middleware/auth");
+const { canReadProject, canWriteProject } = require("../services/projectAccess");
 
 const router = express.Router();
 
 router.use(authenticate);
-
-async function canReadProject(user, projectId) {
-  const result = await pool.query(
-    `SELECT 1
-     FROM projects p
-     WHERE p.id = $1
-       AND (
-         p.owner_id = $2
-         OR p.id IN (SELECT project_id FROM project_members WHERE user_id = $2)
-         OR p.visibility = 'public'
-       )`,
-    [projectId, user.id],
-  );
-  return result.rows.length > 0;
-}
 
 function titleFromText(text) {
   const normalized = String(text || "New chat").replace(/\s+/g, " ").trim();
@@ -61,7 +47,7 @@ router.post("/sessions", async (req, res) => {
   try {
     const { projectId, activeAgent = "rag", title = "New chat" } = req.body;
     if (!projectId) return res.status(400).json({ error: "projectId is required" });
-    if (!(await canReadProject(req.user, projectId))) {
+    if (!(await canWriteProject(req.user, projectId))) {
       return res.status(404).json({ error: "Project not found" });
     }
 
@@ -152,6 +138,32 @@ router.post("/sessions/:id/messages", async (req, res) => {
   } catch (err) {
     console.error("[AIWorkbench] Failed to save message:", err);
     res.status(500).json({ error: "Failed to save chat message" });
+  }
+});
+
+router.patch("/sessions/:id", async (req, res) => {
+  try {
+    const title = titleFromText(req.body.title);
+    if (!title) {
+      return res.status(400).json({ error: "Chat title is required" });
+    }
+
+    const result = await pool.query(
+      `UPDATE ai_workbench_sessions
+       SET title = $1,
+           updated_at = NOW()
+       WHERE id = $2 AND user_id = $3
+       RETURNING *`,
+      [title, req.params.id, req.user.id],
+    );
+    if (!result.rows.length) {
+      return res.status(404).json({ error: "Chat session not found" });
+    }
+
+    res.json({ session: result.rows[0] });
+  } catch (err) {
+    console.error("[AIWorkbench] Failed to update session:", err);
+    res.status(500).json({ error: "Failed to update chat" });
   }
 });
 

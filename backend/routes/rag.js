@@ -5,6 +5,7 @@ const eventBroker = require('../services/eventBroker');
 const vectorStorage = require('../services/vectorStorage');
 const generationService = require('../services/generationService');
 const { authenticate } = require('../middleware/auth');
+const { canReadProject, canWriteProject } = require('../services/projectAccess');
 
 // Boot background microservice event consumers
 require('../services/documentService');
@@ -18,6 +19,13 @@ router.use((req, res, next) => {
   }
   next();
 });
+
+function serializeStreamEvent(event) {
+  return {
+    ...event,
+    payload: eventBroker.sanitizeHistoryPayload(event.topic, event.payload),
+  };
+}
 
 /**
  * POST /api/rag/ingest
@@ -38,6 +46,14 @@ router.post(
 
     const { title, content, projectId, metadata = {} } = req.body;
     const documentId = `doc_${Math.random().toString(36).substring(2, 11)}`;
+
+    try {
+      if (!(await canWriteProject(req.user, projectId))) {
+        return res.status(404).json({ error: 'Project not found or unauthorized' });
+      }
+    } catch (err) {
+      return res.status(500).json({ error: 'Failed to verify project access.' });
+    }
 
     console.log(`[RAG-Router] 📥 Received ingestion request for: "${title}" in project [${projectId}]`);
 
@@ -84,6 +100,10 @@ router.post(
     const { query, projectId, limit = 3, provider = null } = req.body;
 
     try {
+      if (!(await canReadProject(req.user, projectId))) {
+        return res.status(404).json({ error: 'Project not found or unauthorized' });
+      }
+
       // Execute retrieval-augmented synthesis
       const response = await generationService.generateAnswer(query, projectId, { limit, provider });
       res.json(response);
@@ -100,9 +120,14 @@ router.post(
  */
 router.get('/summary', async (req, res) => {
   try {
-    const documents = vectorStorage.getIndexSummary();
+    const documents = [];
+    for (const document of vectorStorage.getIndexSummary()) {
+      if (await canReadProject(req.user, document.projectId)) {
+        documents.push(document);
+      }
+    }
     res.json({
-      totalVectors: vectorStorage.index.length,
+      totalVectors: documents.reduce((count, document) => count + document.chunkCount, 0),
       indexedDocumentsCount: documents.length,
       documents
     });
@@ -116,7 +141,15 @@ router.get('/summary', async (req, res) => {
  * Real-time Server-Sent Events (SSE) endpoint to monitor background microservice events.
  * The client can establish a listener to watch state transition events firing in real time!
  */
-router.get('/events/stream', (req, res) => {
+router.get('/events/stream', async (req, res) => {
+  const projectId = req.query.projectId;
+  if (!projectId) {
+    return res.status(400).json({ error: 'projectId is required' });
+  }
+  if (!(await canReadProject(req.user, projectId))) {
+    return res.status(404).json({ error: 'Project not found or unauthorized' });
+  }
+
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
@@ -127,14 +160,17 @@ router.get('/events/stream', (req, res) => {
   console.log('[RAG-Router] 🔌 Client connected to live events SSE stream.');
 
   // Push existing event history to let the client catch up
-  const history = eventBroker.getHistory();
+  const history = eventBroker
+    .getHistory()
+    .filter((evt) => evt?.payload?.projectId === projectId);
   history.forEach(evt => {
-    res.write(`data: ${JSON.stringify(evt)}\n\n`);
+    res.write(`data: ${JSON.stringify(serializeStreamEvent(evt))}\n\n`);
   });
 
   // Handler to stream new events dynamically
   const eventListener = (event) => {
-    res.write(`data: ${JSON.stringify(event)}\n\n`);
+    if (event?.payload?.projectId !== projectId) return;
+    res.write(`data: ${JSON.stringify(serializeStreamEvent(event))}\n\n`);
   };
 
   // Subscribe to all event dispatches

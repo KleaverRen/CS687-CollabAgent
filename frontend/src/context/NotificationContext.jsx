@@ -36,17 +36,11 @@ export function NotificationProvider({ children }) {
   }, [refresh, user]);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (!user || !token || typeof EventSource === 'undefined') return undefined;
+    if (!user || typeof EventSource === 'undefined') return undefined;
 
-    // NOTE: EventSource cannot set Authorization headers in most browsers,
-    // so the current implementation passes a token in the URL. This exposes
-    // the token in logs and browser history, so it should only be used with:
-    // - short-lived/rotating tokens
-    // - HTTPS-only transport
-    // - server-side redaction or ignoring of query params in logs
-    // Alternatives include cookie-based SSE auth or proxying the SSE connection.
-    const source = new EventSource(`/api/notifications/stream?token=${encodeURIComponent(token)}`);
+    const source = new EventSource('/api/notifications/stream', {
+      withCredentials: true,
+    });
 
     source.addEventListener('ready', (event) => {
       try {

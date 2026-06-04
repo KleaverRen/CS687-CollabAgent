@@ -11,6 +11,7 @@ import {
   CalendarDays,
   CheckCircle2,
   ChevronLeft,
+  ChevronRight,
   Filter,
   GripVertical,
   RotateCcw,
@@ -25,6 +26,11 @@ const DAY_WIDTH = 36;
 const LEFT_WIDTH = 280;
 const ROW_HEIGHT = 56;
 const GROUP_HEIGHT = 40;
+const MIN_CHART_WIDTH = 900;
+// Change 1: Keep the default visible timeline to today plus the next 3 days
+// while preserving the underlying task/dependency data already returned by the API.
+const VISIBLE_DAY_COUNT = 4;
+const TIMELINE_START_PARAM = "timelineStart";
 
 const STATUS_STYLES = {
   todo: "bg-slate-500",
@@ -46,6 +52,10 @@ const WORKSTREAM_COLORS = [
 
 function parseDate(value) {
   if (!value) return null;
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const [year, month, day] = value.split("-").map(Number);
+    return new Date(year, month - 1, day);
+  }
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -94,6 +104,23 @@ function formatLongDate(date) {
         year: "numeric",
       }).format(parsed)
     : "No date";
+}
+
+function formatRange(start, end) {
+  return `${formatLongDate(start)} - ${formatLongDate(end)}`;
+}
+
+function getAbbreviatedLabel(value) {
+  const words = String(value || "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (!words.length) return "Task";
+  const initials = words
+    .slice(0, 3)
+    .map((word) => word[0]?.toUpperCase())
+    .join("");
+  return initials || words[0].slice(0, 3).toUpperCase();
 }
 
 function normalizeTask(task) {
@@ -253,12 +280,17 @@ function TimelineBar({
   color,
   conflicts,
   readOnly,
+  dayWidth,
   onDeadlinePreview,
   onDeadlineCommit,
 }) {
   const dragRef = useRef(null);
   const conflict = conflicts?.[0];
   const statusStyle = STATUS_STYLES[task.status] || STATUS_STYLES.todo;
+  // Change 2: Narrow bars still expose an identifiable label and full hover text.
+  // Wider bars keep the existing title/date treatment.
+  const compactLabel = position.width < 120;
+  const visibleLabel = compactLabel ? getAbbreviatedLabel(task.name) : task.name;
 
   const beginDrag = (event) => {
     if (readOnly) return;
@@ -276,7 +308,7 @@ function TimelineBar({
   const moveDrag = (event) => {
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
-    const deltaDays = Math.round((event.clientX - drag.startX) / DAY_WIDTH);
+    const deltaDays = Math.round((event.clientX - drag.startX) / dayWidth);
     const nextDeadline = addDays(drag.originalDeadline, deltaDays);
     const boundedDeadline =
       nextDeadline < task.startDate ? task.startDate : nextDeadline;
@@ -313,11 +345,18 @@ function TimelineBar({
       onPointerCancel={endDrag}
     >
       <div className={clsx("h-full w-1.5 shrink-0", statusStyle)} />
-      <div className="min-w-0 flex-1 px-2 text-white">
-        <div className="truncate text-xs font-bold leading-4">{task.name}</div>
-        <div className="truncate text-[10px] leading-3 text-white/85">
-          {formatDay(task.deadlineDate)}
+      <div
+        className="min-w-0 flex-1 basis-1/2 px-2 text-white"
+        style={{ minWidth: "50%" }}
+      >
+        <div className="truncate text-xs font-bold leading-4">
+          {visibleLabel}
         </div>
+        {!compactLabel && (
+          <div className="truncate text-[10px] leading-3 text-white/85">
+            {formatDay(task.deadlineDate)}
+          </div>
+        )}
       </div>
       {!readOnly && (
         <div className="h-full w-7 flex items-center justify-center bg-black/10 text-white/85">
@@ -332,6 +371,7 @@ export default function TimelineView() {
   const { id: projectId } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
+  const today = useMemo(() => parseDate(new Date()), []);
   const [project, setProject] = useState(null);
   const [tasks, setTasks] = useState([]);
   const [dependencies, setDependencies] = useState([]);
@@ -350,6 +390,10 @@ export default function TimelineView() {
     tag: searchParams.get("tag") || "",
     assignee: searchParams.get("assignee") || "",
   };
+  const selectedRangeStart = useMemo(
+    () => parseDate(searchParams.get(TIMELINE_START_PARAM)) || today,
+    [searchParams, today],
+  );
 
   const hasFilters = Boolean(
     selectedFilters.workstream ||
@@ -420,7 +464,26 @@ export default function TimelineView() {
     setSearchParams(next);
   };
 
-  const resetFilters = () => setSearchParams({});
+  const resetFilters = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete("workstream");
+    next.delete("tag");
+    next.delete("assignee");
+    setSearchParams(next);
+  };
+
+  const updateRangeStart = (date) => {
+    const parsed = parseDate(date);
+    if (!parsed) return;
+
+    const next = new URLSearchParams(searchParams);
+    const value = toDateInput(parsed);
+    // Change 3: Date navigation lives in the URL alongside existing filters,
+    // so filter behavior and shareable timeline state remain compatible.
+    if (value === toDateInput(today)) next.delete(TIMELINE_START_PARAM);
+    else next.set(TIMELINE_START_PARAM, value);
+    setSearchParams(next);
+  };
 
   const conflictMap = useMemo(() => getConflictMap(conflicts), [conflicts]);
   const conflictEdges = useMemo(() => {
@@ -446,25 +509,48 @@ export default function TimelineView() {
     );
   }, [tasks]);
 
+  const navigationBounds = useMemo(() => {
+    const rangeEnd = addDays(selectedRangeStart, VISIBLE_DAY_COUNT - 1);
+    const starts = [
+      today,
+      selectedRangeStart,
+      ...tasks.map((task) => task.startDate),
+    ];
+    const ends = [rangeEnd, ...tasks.map((task) => task.deadlineDate)];
+    const minStart = starts.reduce(
+      (min, date) => (date < min ? date : min),
+      starts[0],
+    );
+    const maxEnd = ends.reduce(
+      (max, date) => (date > max ? date : max),
+      ends[0],
+    );
+
+    return {
+      start: addDays(minStart, -14),
+      end: addDays(maxEnd, 14),
+    };
+  }, [selectedRangeStart, tasks, today]);
+
   const timeline = useMemo(() => {
-    if (!tasks.length) return { days: [], start: new Date(), chartWidth: 900 };
-    const minStart = tasks.reduce(
-      (min, task) => (task.startDate < min ? task.startDate : min),
-      tasks[0].startDate,
+    const start = selectedRangeStart;
+    const end = addDays(start, VISIBLE_DAY_COUNT - 1);
+    const dayWidth = Math.max(
+      DAY_WIDTH,
+      Math.floor(MIN_CHART_WIDTH / VISIBLE_DAY_COUNT),
     );
-    const maxEnd = tasks.reduce(
-      (max, task) => (task.deadlineDate > max ? task.deadlineDate : max),
-      tasks[0].deadlineDate,
-    );
-    const start = addDays(minStart, -2);
-    const end = addDays(maxEnd, 4);
-    const length = Math.max(7, daysBetween(start, end) + 1);
+    // Change 1: Render only the 4-day window, but leave rows/tasks intact so
+    // filtering, grouping, conflicts, and deadline updates keep their bindings.
     return {
       start,
-      days: Array.from({ length }, (_, index) => addDays(start, index)),
-      chartWidth: Math.max(900, length * DAY_WIDTH),
+      end,
+      dayWidth,
+      days: Array.from({ length: VISIBLE_DAY_COUNT }, (_, index) =>
+        addDays(start, index),
+      ),
+      chartWidth: Math.max(MIN_CHART_WIDTH, VISIBLE_DAY_COUNT * dayWidth),
     };
-  }, [tasks]);
+  }, [selectedRangeStart]);
 
   const rows = useMemo(() => {
     const grouped = new Map();
@@ -512,18 +598,25 @@ export default function TimelineView() {
     for (const row of rows) {
       if (row.type !== "task") continue;
       const task = row.task;
+      const visibleStart =
+        task.startDate > timeline.start ? task.startDate : timeline.start;
+      const visibleEnd =
+        task.deadlineDate < timeline.end ? task.deadlineDate : timeline.end;
+
+      if (visibleEnd < timeline.start || visibleStart > timeline.end) continue;
+
       const x = Math.max(
         0,
-        daysBetween(timeline.start, task.startDate) * DAY_WIDTH,
+        daysBetween(timeline.start, visibleStart) * timeline.dayWidth,
       );
       const width = Math.max(
-        DAY_WIDTH,
-        (daysBetween(task.startDate, task.deadlineDate) + 1) * DAY_WIDTH,
+        timeline.dayWidth,
+        (daysBetween(visibleStart, visibleEnd) + 1) * timeline.dayWidth,
       );
       positions[task.id] = { x, y: row.y, width };
     }
     return positions;
-  }, [rows, timeline.start]);
+  }, [rows, timeline.dayWidth, timeline.end, timeline.start]);
 
   const totalHeight = rows.reduce((sum, row) => sum + row.height, 0);
 
@@ -567,6 +660,15 @@ export default function TimelineView() {
       }
     }, 500);
   };
+
+  const sliderMax = Math.max(
+    1,
+    daysBetween(navigationBounds.start, navigationBounds.end),
+  );
+  const sliderValue = Math.min(
+    sliderMax,
+    Math.max(0, daysBetween(navigationBounds.start, selectedRangeStart)),
+  );
 
   if (loading) {
     return (
@@ -678,6 +780,78 @@ export default function TimelineView() {
               </button>
             )}
           </div>
+
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="inline-flex items-center gap-2 h-9 px-3 rounded-lg bg-[#f3f4f5] text-[#434654] text-sm font-semibold">
+              <CalendarDays className="w-4 h-4" />
+              Date range
+            </div>
+            <div className="inline-flex items-center rounded-lg border border-[#c3c5d7] bg-white overflow-hidden">
+              <button
+                type="button"
+                onClick={() =>
+                  updateRangeStart(
+                    addDays(selectedRangeStart, -VISIBLE_DAY_COUNT),
+                  )
+                }
+                className="h-9 w-9 inline-flex items-center justify-center text-[#434654] hover:bg-slate-50"
+                aria-label="Show previous date range"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => updateRangeStart(today)}
+                className="h-9 px-3 border-l border-r border-[#e1e3e4] text-sm font-semibold text-[#003fb1] hover:bg-slate-50"
+              >
+                Today
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  updateRangeStart(
+                    addDays(selectedRangeStart, VISIBLE_DAY_COUNT),
+                  )
+                }
+                className="h-9 w-9 inline-flex items-center justify-center text-[#434654] hover:bg-slate-50"
+                aria-label="Show next date range"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+            <label className="flex flex-col gap-1 min-w-[160px]">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-[#737686]">
+                Jump to
+              </span>
+              <input
+                type="date"
+                value={toDateInput(selectedRangeStart)}
+                onChange={(event) => updateRangeStart(event.target.value)}
+                className="h-9 rounded-lg border border-[#c3c5d7] bg-white px-3 text-sm text-[#191c1d] outline-none focus:border-[#003fb1] focus:ring-2 focus:ring-[#003fb1]/15"
+              />
+            </label>
+            <label className="flex flex-col gap-1 min-w-[220px] flex-1 max-w-lg">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-[#737686]">
+                Scrub schedule
+              </span>
+              <input
+                type="range"
+                min="0"
+                max={sliderMax}
+                value={sliderValue}
+                onChange={(event) =>
+                  updateRangeStart(
+                    addDays(navigationBounds.start, Number(event.target.value)),
+                  )
+                }
+                className="h-9 accent-[#003fb1]"
+                aria-label="Scrub visible timeline date range"
+              />
+            </label>
+            <span className="text-xs font-semibold text-[#434654]">
+              {formatRange(timeline.start, timeline.end)}
+            </span>
+          </div>
         </div>
 
         {readOnly && (
@@ -713,7 +887,7 @@ export default function TimelineView() {
                     >
                       {timeline.days.map((day) => {
                         const isToday =
-                          toDateInput(day) === toDateInput(new Date());
+                          toDateInput(day) === toDateInput(today);
                         return (
                           <div
                             key={day.toISOString()}
@@ -723,7 +897,10 @@ export default function TimelineView() {
                                 ? "bg-[#d6e0f1] text-[#003fb1] font-bold"
                                 : "text-[#737686]",
                             )}
-                            style={{ width: DAY_WIDTH, minWidth: DAY_WIDTH }}
+                            style={{
+                              width: timeline.dayWidth,
+                              minWidth: timeline.dayWidth,
+                            }}
                           >
                             {formatDay(day)}
                           </div>
@@ -812,7 +989,7 @@ export default function TimelineView() {
                       <div className="absolute inset-0 z-0 flex pointer-events-none">
                         {timeline.days.map((day) => {
                           const isToday =
-                            toDateInput(day) === toDateInput(new Date());
+                            toDateInput(day) === toDateInput(today);
                           return (
                             <div
                               key={`${day.toISOString()}-line`}
@@ -822,7 +999,10 @@ export default function TimelineView() {
                                   ? "border-[#003fb1] bg-[#d6e0f1]/20"
                                   : "border-[#eef0f1]",
                               )}
-                              style={{ width: DAY_WIDTH, minWidth: DAY_WIDTH }}
+                              style={{
+                                width: timeline.dayWidth,
+                                minWidth: timeline.dayWidth,
+                              }}
                             />
                           );
                         })}
@@ -836,18 +1016,21 @@ export default function TimelineView() {
                       />
                       {rows
                         .filter((row) => row.type === "task")
-                        .map((row) => (
-                          <TimelineBar
-                            key={row.task.id}
-                            task={row.task}
-                            position={taskPositions[row.task.id]}
-                            color={workstreamColorMap[row.task.workstream]}
-                            conflicts={conflictMap[row.task.id]}
-                            readOnly={readOnly}
-                            onDeadlinePreview={previewDeadline}
-                            onDeadlineCommit={commitDeadline}
-                          />
-                        ))}
+                        .map((row) =>
+                          taskPositions[row.task.id] ? (
+                            <TimelineBar
+                              key={row.task.id}
+                              task={row.task}
+                              position={taskPositions[row.task.id]}
+                              color={workstreamColorMap[row.task.workstream]}
+                              conflicts={conflictMap[row.task.id]}
+                              readOnly={readOnly}
+                              dayWidth={timeline.dayWidth}
+                              onDeadlinePreview={previewDeadline}
+                              onDeadlineCommit={commitDeadline}
+                            />
+                          ) : null,
+                        )}
                     </div>
                   </div>
                 </div>

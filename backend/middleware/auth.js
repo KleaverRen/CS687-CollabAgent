@@ -1,6 +1,16 @@
 const jwt = require("jsonwebtoken");
 const pool = require("../config/database");
 
+function getCookie(req, name) {
+  const cookies = String(req.headers.cookie || "")
+    .split(";")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const prefix = `${name}=`;
+  const match = cookies.find((cookie) => cookie.startsWith(prefix));
+  return match ? decodeURIComponent(match.slice(prefix.length)) : undefined;
+}
+
 const authenticate = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
@@ -10,15 +20,16 @@ const authenticate = async (req, res, next) => {
         : undefined;
     const queryToken =
       typeof req.query.token === "string" ? req.query.token : undefined;
+    const cookieToken = getCookie(req, "collabagent_session");
 
     if (authHeader && !authToken) {
       return res.status(401).json({ error: "Invalid Authorization header" });
     }
-    if (!authToken && !queryToken) {
+    if (!authToken && !cookieToken && !queryToken) {
       return res.status(401).json({ error: "No token provided" });
     }
 
-    const token = authToken || queryToken;
+    const token = authToken || cookieToken || queryToken;
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
     const result = await pool.query(
@@ -53,11 +64,12 @@ const authenticateSSE = async (req, res, next) => {
     }
 
     const sseToken =
-      typeof req.query.sse_token === "string"
+      getCookie(req, "collabagent_session") ||
+      (typeof req.query.sse_token === "string"
         ? req.query.sse_token
         : typeof req.query.token === "string"
           ? req.query.token
-          : undefined;
+          : undefined);
     if (!sseToken) {
       return res.status(401).json({ error: "No SSE token provided" });
     }

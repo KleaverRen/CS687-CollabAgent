@@ -19,9 +19,13 @@ class EventBroker extends EventEmitter {
       timestamp: new Date().toISOString(),
       payload,
     };
+    const historyEvent = {
+      ...event,
+      payload: this.sanitizeHistoryPayload(topic, payload),
+    };
 
     // Store in history for real-time monitoring
-    this.history.push(event);
+    this.history.push(historyEvent);
     if (this.history.length > this.maxHistorySize) {
       this.history.shift();
     }
@@ -36,6 +40,20 @@ class EventBroker extends EventEmitter {
     }, 200);
 
     return event.event_id;
+  }
+
+  sanitizeHistoryPayload(topic, payload) {
+    if (!payload || typeof payload !== 'object') return payload;
+
+    if (topic === 'document.created' && Object.prototype.hasOwnProperty.call(payload, 'content')) {
+      const { content, ...rest } = payload;
+      return {
+        ...rest,
+        contentLength: String(content || '').length,
+      };
+    }
+
+    return payload;
   }
 
   /**

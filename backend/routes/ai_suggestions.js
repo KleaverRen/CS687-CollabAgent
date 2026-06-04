@@ -3,8 +3,17 @@ const router = express.Router();
 const { body, validationResult } = require("express-validator");
 const pool = require("../config/database");
 const { authenticate } = require("../middleware/auth");
+const { canReadProject } = require("../services/projectAccess");
 
 router.use(authenticate);
+
+function buildDependentCountMap(edges) {
+  const counts = new Map();
+  for (const edge of edges) {
+    counts.set(edge.parent_task_id, (counts.get(edge.parent_task_id) || 0) + 1);
+  }
+  return counts;
+}
 
 // ═══════════════════════════════════════════════════════════
 //  ALGORITHM 1 — Blocker Detection
@@ -13,6 +22,7 @@ router.use(authenticate);
 // ═══════════════════════════════════════════════════════════
 function detectBlockers(tasks, edges) {
   const taskMap = Object.fromEntries(tasks.map((t) => [t.id, t]));
+  const dependentCounts = buildDependentCountMap(edges);
   const suggestions = [];
 
   for (const edge of edges) {
@@ -30,9 +40,7 @@ function detectBlockers(tasks, edges) {
     if (parent.status === "in_progress") continue;
 
     // Count how many tasks this blocker cascades to
-    const cascadeCount = edges.filter(
-      (e) => e.parent_task_id === edge.child_task_id,
-    ).length;
+    const cascadeCount = dependentCounts.get(edge.child_task_id) || 0;
 
     const daysUntilDeadline = child.deadline
       ? Math.ceil((new Date(child.deadline) - new Date()) / 86400000)
@@ -90,10 +98,11 @@ const SPLIT_TEMPLATES = {
 
 function recommendSplits(tasks, edges) {
   const suggestions = [];
+  const dependentCounts = buildDependentCountMap(edges);
   for (const task of tasks) {
     if (task.status === "done") continue;
     const hours = parseFloat(task.estimated_hours) || 0;
-    const dependents = edges.filter((e) => e.parent_task_id === task.id).length;
+    const dependents = dependentCounts.get(task.id) || 0;
 
     if (hours < 8 && dependents < 2) continue;
 
@@ -230,11 +239,7 @@ function computeCriticalPath(tasks, edges) {
 // ═══════════════════════════════════════════════════════════
 function reRankPriorities(tasks, edges) {
   const suggestions = [];
-  const childMap = {};
-  for (const e of edges) {
-    if (!childMap[e.parent_task_id]) childMap[e.parent_task_id] = [];
-    childMap[e.parent_task_id].push(e.child_task_id);
-  }
+  const dependentCounts = buildDependentCountMap(edges);
 
   const scored = tasks
     .filter((t) => t.status !== "done")
@@ -244,7 +249,7 @@ function reRankPriorities(tasks, edges) {
         : 999;
       const deadlineScore =
         daysLeft === 0 ? 10 : Math.max(0, 10 - daysLeft * 0.5);
-      const dependentCount = (childMap[t.id] || []).length;
+      const dependentCount = dependentCounts.get(t.id) || 0;
       const score = deadlineScore + dependentCount * 2;
 
       const currentPriority = t.priority;
@@ -272,7 +277,7 @@ function reRankPriorities(tasks, edges) {
       recommended_priority: s.recommendedPriority,
       score: Math.round(s.score),
       title: `Raise "${s.task.title}" to ${s.recommendedPriority}`,
-      description: `Composite score: ${Math.round(s.score)} (deadline proximity + ${(childMap[s.task.id] || []).length} dependents). Currently marked "${s.currentPriority}" — recommend upgrading to "${s.recommendedPriority}".`,
+      description: `Composite score: ${Math.round(s.score)} (deadline proximity + ${dependentCounts.get(s.task.id) || 0} dependents). Currently marked "${s.currentPriority}" — recommend upgrading to "${s.recommendedPriority}".`,
       action_label: `Set priority to ${s.recommendedPriority}`,
       action: { patch_task_id: s.task.id, priority: s.recommendedPriority },
       confidence: Math.min(0.9, 0.5 + s.score * 0.02),
@@ -328,6 +333,10 @@ router.post("/suggest", [body("project_id").isUUID()], async (req, res) => {
   const { project_id, task_id } = req.body;
 
   try {
+    if (!(await canReadProject(req.user, project_id))) {
+      return res.status(404).json({ error: "Project not found or unauthorized" });
+    }
+
     const [tasksRes, edgesRes, membersRes] = await Promise.all([
       pool.query(
         `SELECT t.*, u.full_name AS assignee_name FROM tasks t

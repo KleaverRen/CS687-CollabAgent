@@ -8,16 +8,12 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   const loadUser = useCallback(async () => {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      setLoading(false);
-      return;
-    }
     try {
-      const { data } = await api.get('/auth/me');
+      const { data } = await api.get('/auth/me', { skipAuthRedirect: true });
       setUser(data.user);
     } catch {
       localStorage.removeItem('token');
+      setUser(null);
     } finally {
       setLoading(false);
     }
@@ -29,14 +25,14 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (email, password) => {
     const { data } = await api.post('/auth/login', { email, password });
-    localStorage.setItem('token', data.token);
+    localStorage.removeItem('token');
     setUser(data.user);
     return data;
   };
 
   const register = async (payload) => {
     const { data } = await api.post('/auth/register', payload);
-    localStorage.setItem('token', data.token);
+    localStorage.removeItem('token');
     setUser(data.user);
     return data;
   };

@@ -10,6 +10,10 @@ router.use(authenticate);
 // GET /api/users - List users with optional role filtering
 router.get("/", async (req, res) => {
   const { role } = req.query;
+  if (req.user.role !== "advisor") {
+    return res.status(403).json({ error: "Advisor permissions required" });
+  }
+
   try {
     let query =
       "SELECT id, full_name, email, role, avatar_url, institution FROM users";
