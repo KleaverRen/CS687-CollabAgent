@@ -7,6 +7,7 @@
     "start": "NODE_OPTIONS='--no-deprecation' node server.js",
     "dev": "NODE_OPTIONS='--no-deprecation' nodemon server.js",
     "db:migrate": "node db/migrate.js",
+    "db:migrate:vectors": "node db/migrate_vectors.js",
     "db:seed": "node db/seed.js",
     "test": "node --test test/*.test.js"
   },

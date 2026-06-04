@@ -7,6 +7,7 @@ const { authenticate } = require('../middleware/auth');
 const { extractText, getFileType } = require('../services/fileExtractionService');
 const { updateDocumentStatus } = require('../services/documentStatusService');
 const { canReadProject, canWriteProject } = require('../services/projectAccess');
+const vectorStorage = require('../services/vectorStorage');
 
 // Boot background RAG consumers for the document.created event published here.
 require('../services/documentService');
@@ -292,6 +293,73 @@ router.post(
             ? 'Failed to extract and index the uploaded document.'
             : err.message,
       });
+    }
+  },
+);
+
+router.delete(
+  '/:documentId',
+  [
+    param('id').isUUID().withMessage('Valid project ID is required'),
+    param('documentId').isUUID().withMessage('Valid document ID is required'),
+  ],
+  requireProjectWriteAccess,
+  async (req, res) => {
+    if (sendValidationErrors(req, res)) return;
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const existing = await client.query(
+        `SELECT id, project_id, title
+         FROM documents
+         WHERE id = $1 AND project_id = $2
+         FOR UPDATE`,
+        [req.params.documentId, req.params.id],
+      );
+
+      if (existing.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'Document not found' });
+      }
+
+      const chunksTable = await client.query(
+        "SELECT to_regclass('public.document_chunks') AS table_name",
+      );
+      if (chunksTable.rows[0]?.table_name) {
+        await client.query(
+          'DELETE FROM document_chunks WHERE document_id = $1',
+          [req.params.documentId],
+        );
+      }
+
+      await client.query(
+        'DELETE FROM documents WHERE id = $1 AND project_id = $2',
+        [req.params.documentId, req.params.id],
+      );
+
+      await client.query('COMMIT');
+
+      const removedVectorCount = vectorStorage.removeDocument(req.params.documentId);
+      eventBroker.publish('document.deleted', {
+        documentId: req.params.documentId,
+        projectId: req.params.id,
+        title: existing.rows[0].title,
+        removedVectorCount,
+      });
+
+      return res.json({
+        message: 'Document deleted',
+        deletedDocumentId: req.params.documentId,
+        removedVectorCount,
+      });
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => {});
+      console.error('[Documents] Failed to delete document:', err);
+      return res.status(500).json({ error: 'Failed to delete document.' });
+    } finally {
+      client.release();
     }
   },
 );

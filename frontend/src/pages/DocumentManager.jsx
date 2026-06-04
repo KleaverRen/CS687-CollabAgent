@@ -8,10 +8,12 @@ import {
   Filter,
   Loader2,
   Search,
+  Trash2,
   Upload,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import Layout from "../components/Layout";
+import DeleteConfirmationModal from "../components/DeleteConfirmationModal";
 import api from "../utils/api";
 
 const fieldClass =
@@ -72,6 +74,8 @@ export default function DocumentManager() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
+  const [documentPendingDelete, setDocumentPendingDelete] = useState(null);
+  const [deletingDocumentId, setDeletingDocumentId] = useState(null);
 
   const hasActiveIndexing = useMemo(
     () => documents.some((doc) => activeStatuses.has(doc.embeddingStatus)),
@@ -137,6 +141,23 @@ export default function DocumentManager() {
     event.preventDefault();
     setDragActive(false);
     uploadFile(event.dataTransfer.files?.[0]);
+  };
+
+  const deleteDocument = async () => {
+    if (!documentPendingDelete || deletingDocumentId) return;
+
+    const documentId = documentPendingDelete.id;
+    setDeletingDocumentId(documentId);
+    try {
+      await api.delete(`/projects/${projectId}/documents/${documentId}`);
+      setDocuments((items) => items.filter((doc) => doc.id !== documentId));
+      setDocumentPendingDelete(null);
+      toast.success("Document deleted.");
+    } catch (err) {
+      toast.error(getApiError(err, "Failed to delete document."));
+    } finally {
+      setDeletingDocumentId(null);
+    }
   };
 
   const statusOptions = ["extracting", "chunking", "embedding", "indexing", "indexed", "failed"];
@@ -272,7 +293,7 @@ export default function DocumentManager() {
               <table className="min-w-full divide-y divide-[#dfe3e8]">
                 <thead className="bg-[#f3f4f5]">
                   <tr>
-                    {["Filename", "Upload date", "Type", "Size", "Indexing status"].map((heading) => (
+                    {["Filename", "Upload date", "Type", "Size", "Indexing status", ""].map((heading) => (
                       <th
                         key={heading}
                         className="px-4 py-3 text-left text-xs font-bold uppercase tracking-[0.12em] text-[#4b5563]"
@@ -285,14 +306,14 @@ export default function DocumentManager() {
                 <tbody className="divide-y divide-[#eef0f3]">
                   {loading ? (
                     <tr>
-                      <td colSpan="5" className="px-4 py-10 text-center text-sm text-[#5f6b7a]">
+                      <td colSpan="6" className="px-4 py-10 text-center text-sm text-[#5f6b7a]">
                         <Loader2 className="mx-auto mb-2 h-5 w-5 animate-spin text-[#0b47c2]" />
                         Loading documents...
                       </td>
                     </tr>
                   ) : documents.length === 0 ? (
                     <tr>
-                      <td colSpan="5" className="px-4 py-10 text-center text-sm text-[#5f6b7a]">
+                      <td colSpan="6" className="px-4 py-10 text-center text-sm text-[#5f6b7a]">
                         No documents match the current filters.
                       </td>
                     </tr>
@@ -355,6 +376,22 @@ export default function DocumentManager() {
                             </span>
                           </div>
                         </td>
+                        <td className="px-4 py-4 text-right">
+                          <button
+                            type="button"
+                            className="inline-grid h-9 w-9 place-items-center rounded-lg border border-[#ffd1ce] text-[#ba1a1a] transition-colors hover:bg-[#fff7f6] disabled:cursor-not-allowed disabled:opacity-60"
+                            disabled={deletingDocumentId === doc.id}
+                            onClick={() => setDocumentPendingDelete(doc)}
+                            aria-label={`Delete ${doc.fileName || doc.title}`}
+                            title="Delete document"
+                          >
+                            {deletingDocumentId === doc.id ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-4 w-4" />
+                            )}
+                          </button>
+                        </td>
                       </tr>
                     ))
                   )}
@@ -364,6 +401,18 @@ export default function DocumentManager() {
           </div>
         </section>
       </div>
+      <DeleteConfirmationModal
+        open={!!documentPendingDelete}
+        title="Delete document"
+        message="This removes the upload and its indexed data from the project. This action cannot be undone."
+        itemName={documentPendingDelete?.fileName || documentPendingDelete?.title}
+        confirmLabel="Delete document"
+        loading={!!deletingDocumentId}
+        onCancel={() => {
+          if (!deletingDocumentId) setDocumentPendingDelete(null);
+        }}
+        onConfirm={deleteDocument}
+      />
     </Layout>
   );
 }

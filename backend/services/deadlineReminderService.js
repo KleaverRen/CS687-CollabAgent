@@ -197,7 +197,7 @@ let scheduledTask = null;
  * Can be overridden via DEADLINE_CRON env variable.
  */
 function startScheduler(cronExpression) {
-  const expression = cronExpression || process.env.DEADLINE_CRON || "0 * * * *";
+  const expression = cronExpression || process.env.DEADLINE_CRON || "0 * * * *"; // Default: every hour at minute 0
 
   if (scheduledTask) {
     scheduledTask.stop();

@@ -1,6 +1,6 @@
 const path = require("path");
 const mammoth = require("mammoth");
-const pdf = require("pdf-parse");
+const { PDFParse } = require("pdf-parse");
 
 const supportedTypes = {
   ".pdf": {
@@ -43,8 +43,13 @@ function normalizeExtractedText(text) {
 }
 
 async function extractPdf(buffer) {
-  const result = await pdf(buffer);
-  return normalizeExtractedText(result.text);
+  const parser = new PDFParse({ data: buffer });
+  try {
+    const result = await parser.getText();
+    return normalizeExtractedText(result.text);
+  } finally {
+    await parser.destroy();
+  }
 }
 
 async function extractDocx(buffer) {

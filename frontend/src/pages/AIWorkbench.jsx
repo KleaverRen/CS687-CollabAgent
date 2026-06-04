@@ -121,18 +121,67 @@ const actionLabels = {
 };
 
 const workbenchStateVersion = 1;
+const maxStoredWorkbenchStateBytes = 250000;
 
 const getSessionGreeting = () => [];
 
-function taskDraftSummary(draft) {
+function isStorageQuotaError(error) {
+  return (
+    error?.name === "QuotaExceededError" ||
+    error?.name === "NS_ERROR_DOM_QUOTA_REACHED" ||
+    error?.code === 22 ||
+    error?.code === 1014
+  );
+}
+
+function readStoredWorkbenchState(projectId) {
+  const savedStateKey = `aiworkbench:${projectId || "global"}:state`;
+  const stores = [sessionStorage, localStorage];
+
+  for (const store of stores) {
+    const savedState = store.getItem(savedStateKey);
+    if (!savedState) continue;
+
+    try {
+      return JSON.parse(savedState);
+    } catch {
+      store.removeItem(savedStateKey);
+    }
+  }
+
+  return null;
+}
+
+function writeStoredWorkbenchState(projectId, state) {
+  const savedStateKey = `aiworkbench:${projectId || "global"}:state`;
+  const serializedState = JSON.stringify(state);
+
+  if (serializedState.length > maxStoredWorkbenchStateBytes) {
+    sessionStorage.removeItem(savedStateKey);
+    localStorage.removeItem(savedStateKey);
+    return;
+  }
+
+  try {
+    sessionStorage.setItem(savedStateKey, serializedState);
+    localStorage.removeItem(savedStateKey);
+  } catch (error) {
+    if (!isStorageQuotaError(error)) throw error;
+    sessionStorage.removeItem(savedStateKey);
+    localStorage.removeItem(savedStateKey);
+  }
+}
+
+function taskDraftSummary(draft, { includeTitle = true } = {}) {
   if (!draft) return "No task draft was generated.";
   const parts = [
-    `Title: ${draft.title || "Untitled task"}`,
-    draft.description ? `Description: ${draft.description}` : null,
-    draft.priority ? `Priority: ${draft.priority}` : null,
-    draft.assignee_name ? `Assignee: ${draft.assignee_name}` : null,
-    draft.complexity ? `Complexity: ${draft.complexity}` : null,
-    draft.blocker ? `Potential blocker: ${draft.blocker}` : null,
+    includeTitle ? `- **Title:** ${draft.title || "Untitled task"}` : null,
+    draft.description ? `- **Description:** ${draft.description}` : null,
+    draft.workstream ? `- **Workstream:** ${draft.workstream}` : null,
+    draft.priority ? `- **Priority:** ${draft.priority}` : null,
+    draft.assignee_name ? `- **Assignee:** ${draft.assignee_name}` : null,
+    draft.complexity ? `- **Complexity/Effort:** ${draft.complexity}` : null,
+    draft.blocker ? `- **Potential blocker:** ${draft.blocker}` : null,
   ].filter(Boolean);
   return parts.join("\n");
 }
@@ -142,8 +191,32 @@ function taskDraftsSummary(drafts) {
     return "No task drafts were generated.";
   }
   return drafts
-    .map((draft, index) => `${index + 1}. ${taskDraftSummary(draft)}`)
+    .map(
+      (draft, index) =>
+        `### ${index + 1}. ${draft.title || "Untitled task"}\n${taskDraftSummary(draft, { includeTitle: false })}`,
+    )
     .join("\n\n");
+}
+
+function normalizeAgentMarkdown(text) {
+  const value = String(text || "");
+  if (!/\b(?:Generated|Action items:).*?\b\d+\.\s+Title:/s.test(value)) {
+    return value;
+  }
+
+  return value
+    .replace(
+      /(Generated \d+ task drafts?:)\s*/i,
+      (_, heading) => `${heading}\n\n`,
+    )
+    .replace(/(Action items:)\s*/i, (_, heading) => `${heading}\n\n`)
+    .replace(/\s*(\d+)\.\s+Title:\s*/g, "\n\n### $1. ")
+    .replace(/\s+Description:\s*/g, "\n- **Description:** ")
+    .replace(/\s+Workstream:\s*/g, "\n- **Workstream:** ")
+    .replace(/\s+Complexity\/Effort:\s*/g, "\n- **Complexity/Effort:** ")
+    .replace(/\s+Potential Blocker:\s*/g, "\n- **Potential blocker:** ")
+    .replace(/\s+Priority:\s*/g, "\n- **Priority:** ")
+    .trim();
 }
 
 function taskDraftKey(draft, assignToSelf = false) {
@@ -379,7 +452,7 @@ function StreamingMessage({ text, stream = false }) {
     return () => window.clearInterval(timer);
   }, [stream, text]);
 
-  return <p>{text.slice(0, visibleLength)}</p>;
+  return <ReactMarkdown>{text.slice(0, visibleLength)}</ReactMarkdown>;
 }
 
 function AgentAvatar({ agent, className }) {
@@ -522,14 +595,7 @@ export default function AIWorkbench() {
     sessionIdRef.current = `aiw-${projectId || "global"}-${Date.now()}`;
     restoredProjectRef.current = "";
 
-    const savedStateKey = `aiworkbench:${projectId || "global"}:state`;
-    const savedState = sessionStorage.getItem(savedStateKey);
-    let nextState = null;
-    try {
-      nextState = savedState ? JSON.parse(savedState) : null;
-    } catch {
-      sessionStorage.removeItem(savedStateKey);
-    }
+    const nextState = readStoredWorkbenchState(projectId);
 
     setActiveTab(
       allowedTabIds.has(nextState?.activeTab)
@@ -539,41 +605,25 @@ export default function AIWorkbench() {
     setLoadingAction("");
     setSelectedProvider(nextState?.selectedProvider || "auto");
     setSearchTerm(nextState?.searchTerm || "");
-    setIngestionEvents(nextState?.ingestionEvents || []);
+    setIngestionEvents([]);
     setDocTitle(nextState?.docTitle || "");
     setDocContent(nextState?.docContent || "");
     setRagQuery(nextState?.ragQuery || "");
-    setRagAnswer(nextState?.ragAnswer || null);
+    setRagAnswer(null);
     setTaskRequest(nextState?.taskRequest || "");
-    setTaskDraft(nextState?.taskDraft || null);
-    setTaskDrafts(nextState?.taskDrafts || []);
-    setTaskUpdateDraft(nextState?.taskUpdateDraft || null);
+    setTaskDraft(null);
+    setTaskDrafts([]);
+    setTaskUpdateDraft(null);
     setTranscript(nextState?.transcript || "");
-    setMeetingResult(
-      nextState?.meetingResult
-        ? {
-            ...nextState.meetingResult,
-            actionItemDrafts: nextState.meetingResult.actionItemDrafts?.map(
-              (item, index) => ({
-                ...item,
-                id: item.id || `meeting-action-restored-${index}`,
-              }),
-            ),
-          }
-        : null,
-    );
+    setMeetingResult(null);
     setCreatingMeetingActionIds([]);
     setFeedbackBody(nextState?.feedbackBody || "");
     setFeedbackSeverity(nextState?.feedbackSeverity || "medium");
-    setFeedbackResult(nextState?.feedbackResult || null);
-    setProgressReport(nextState?.progressReport || "");
+    setFeedbackResult(null);
+    setProgressReport("");
     setProgressPrompt(nextState?.progressPrompt || "");
     setIsEditingReport(false);
-    setChatMessages(
-      nextState?.chatMessages?.length
-        ? nextState.chatMessages.map((msg) => ({ ...msg, stream: false }))
-        : getSessionGreeting(),
-    );
+    setChatMessages(getSessionGreeting());
     restoredProjectRef.current = projectId || "global";
 
     if (projectId && user?.id) {
@@ -877,53 +927,32 @@ export default function AIWorkbench() {
   useEffect(() => {
     if (restoredProjectRef.current !== (projectId || "global")) return;
 
-    sessionStorage.setItem(
-      `aiworkbench:${projectId || "global"}:state`,
-      JSON.stringify({
-        version: workbenchStateVersion,
-        activeTab,
-        selectedProvider,
-        searchTerm,
-        ingestionEvents: ingestionEvents.slice(-20),
-        chatMessages,
-        docTitle,
-        docContent,
-        ragQuery,
-        ragAnswer,
-        taskRequest,
-        taskDraft,
-        taskDrafts,
-        taskUpdateDraft,
-        transcript,
-        meetingResult,
-        feedbackBody,
-        feedbackSeverity,
-        feedbackResult,
-        progressReport,
-        progressPrompt,
-      }),
-    );
+    writeStoredWorkbenchState(projectId, {
+      version: workbenchStateVersion,
+      activeTab,
+      selectedProvider,
+      searchTerm,
+      docTitle,
+      docContent,
+      ragQuery,
+      taskRequest,
+      transcript,
+      feedbackBody,
+      feedbackSeverity,
+      progressPrompt,
+    });
   }, [
     activeTab,
-    chatMessages,
     docContent,
     docTitle,
     feedbackBody,
-    feedbackResult,
     feedbackSeverity,
-    ingestionEvents,
-    meetingResult,
     progressPrompt,
-    progressReport,
     projectId,
-    ragAnswer,
     ragQuery,
     searchTerm,
     selectedProvider,
-    taskDraft,
-    taskDrafts,
     taskRequest,
-    taskUpdateDraft,
     transcript,
   ]);
 
@@ -1151,7 +1180,7 @@ export default function AIWorkbench() {
         setTaskDrafts([]);
         setTaskUpdateDraft(data.updateDraft);
         return {
-          message: `Prepared task update:\n${taskDraftSummary(data.updateDraft)}`,
+          message: `Prepared task update:\n\n${taskDraftSummary(data.updateDraft)}`,
           metadata: { draftType: "task_update", updateDraft: data.updateDraft },
         };
       }
@@ -1166,7 +1195,7 @@ export default function AIWorkbench() {
         setTaskDraft(null);
         setTaskDrafts(data.drafts);
         return {
-          message: `Generated ${data.drafts.length} task draft${data.drafts.length === 1 ? "" : "s"}:\n${taskDraftsSummary(data.drafts)}`,
+          message: `Generated ${data.drafts.length} task draft${data.drafts.length === 1 ? "" : "s"}:\n\n${taskDraftsSummary(data.drafts)}`,
           metadata: {
             draftType: "task_list",
             draftCount: data.drafts.length,
@@ -1177,7 +1206,7 @@ export default function AIWorkbench() {
         setTaskDrafts([]);
         setTaskDraft(data.draft);
         return {
-          message: `Generated task draft:\n${taskDraftSummary(data.draft)}`,
+          message: `Generated task draft:\n\n${taskDraftSummary(data.draft)}`,
           metadata: { draftType: "single_task", draft: data.draft },
         };
       }
@@ -1335,7 +1364,7 @@ export default function AIWorkbench() {
 
       if (created.length === 0) return false;
       return {
-        message: `Created ${created.length} task${created.length === 1 ? "" : "s"}:\n${created
+        message: `Created ${created.length} task${created.length === 1 ? "" : "s"}:\n\n${created
           .map(
             (task, index) => `${index + 1}. ${task?.title || "Untitled task"}`,
           )
@@ -1394,7 +1423,7 @@ export default function AIWorkbench() {
         message: [
           data.summary || "Meeting summary generated.",
           data.actionItemDrafts?.length
-            ? `Action items:\n${taskDraftsSummary(data.actionItemDrafts)}`
+            ? `Action items:\n\n${taskDraftsSummary(data.actionItemDrafts)}`
             : "No action items were identified.",
         ].join("\n\n"),
         metadata: {
@@ -1423,7 +1452,7 @@ export default function AIWorkbench() {
         message: [
           data.structuredSummary || "Feedback recorded.",
           data.suggestedResponseTemplate
-            ? `Suggested response:\n${data.suggestedResponseTemplate}`
+            ? `Suggested response:\n\n${data.suggestedResponseTemplate}`
             : null,
         ]
           .filter(Boolean)
@@ -2368,6 +2397,10 @@ export default function AIWorkbench() {
                     hour: "2-digit",
                     minute: "2-digit",
                   });
+                  const readableAgentText =
+                    message.sender === "agent"
+                      ? normalizeAgentMarkdown(message.text)
+                      : message.text;
 
                   if (message.sender === "user") {
                     return (
@@ -2407,11 +2440,11 @@ export default function AIWorkbench() {
                         <div className="prose prose-sm max-w-none text-[#1f2430] prose-p:my-2 prose-p:leading-7 prose-ol:my-3 prose-li:my-1 prose-strong:text-[#161821] prose-pre:rounded-2xl prose-pre:bg-[#111827]">
                           {message.stream ? (
                             <StreamingMessage
-                              text={message.text}
+                              text={readableAgentText}
                               stream={!!message.stream}
                             />
                           ) : (
-                            <ReactMarkdown>{message.text}</ReactMarkdown>
+                            <ReactMarkdown>{readableAgentText}</ReactMarkdown>
                           )}
                         </div>
                         <div className="mt-4 flex items-center gap-2 text-[#8a90a0]">
