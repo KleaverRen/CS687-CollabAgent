@@ -247,7 +247,7 @@ function KanbanColumn({
 
   return (
     <div
-      className={`flex-1 min-w-[220px] max-w-xs flex flex-col rounded-2xl transition-colors ${dragOver && !readOnly ? 'bg-[#003fb1]/5 ring-2 ring-[#003fb1]/20' : 'bg-slate-50'}`}
+      className={`flex-1 min-w-[220px] max-w-xs h-full min-h-0 flex flex-col rounded-2xl transition-colors ${dragOver && !readOnly ? 'bg-[#003fb1]/5 ring-2 ring-[#003fb1]/20' : 'bg-slate-50'}`}
       onDragOver={(e) => { if (!readOnly) { e.preventDefault(); setDragOver(true); } }}
       onDragLeave={() => setDragOver(false)}
       onDrop={(e) => { setDragOver(false); if (!readOnly) onDrop(e, col.id); }}
@@ -261,7 +261,7 @@ function KanbanColumn({
         </div>
       </div>
       {/* Cards */}
-      <div className={clsx('flex-1', 'px-3', 'pb-4', 'space-y-3', 'overflow-y-auto')} style={{ maxHeight: '65vh' }}>
+      <div className={clsx('min-h-0', 'flex-1', 'px-3', 'pb-4', 'space-y-3', 'overflow-y-auto')}>
         {tasks.map((task) => (
           <div key={task.id} draggable={!readOnly} onDragStart={(e) => { if (!readOnly) e.dataTransfer.setData('taskId', task.id); }}>
             <TaskCard
@@ -321,7 +321,7 @@ function BoardInner({ projects, selectedProjectId, setSelectedProjectId, selecte
   const criticalCount = suggestions.filter((s) => s.severity === 'critical').length;
 
   return (
-    <div className={clsx('flex', 'flex-col', 'h-full')}>
+    <div className={clsx('flex', 'flex-col', 'h-full', 'min-h-0')}>
       {/* ── Top bar ── */}
       <div className={clsx('flex', 'items-center', 'justify-between', 'px-6', 'py-4', 'border-b', 'border-[#e1e3e4]', 'bg-white', 'flex-shrink-0', 'gap-3', 'flex-wrap')}>
         <div className={clsx('flex', 'items-center', 'gap-3')}>
@@ -412,18 +412,18 @@ function BoardInner({ projects, selectedProjectId, setSelectedProjectId, selecte
       )}
 
       {/* ── Kanban board ── */}
-      <div className={clsx('flex-1', 'overflow-auto', 'px-6', 'py-5')}>
+      <div className={clsx('min-h-0', 'flex-1', 'overflow-auto', 'px-6', 'py-5')}>
         {loading ? (
-          <div className={clsx('flex', 'gap-4')}>
+          <div className={clsx('flex', 'h-full', 'min-h-[420px]', 'items-stretch', 'gap-4')}>
             {COLUMNS.map((col) => (
-              <div key={col.id} className={clsx('flex-1', 'min-w-[220px]', 'bg-slate-50', 'rounded-2xl', 'p-4')}>
+              <div key={col.id} className={clsx('flex-1', 'min-w-[220px]', 'max-w-xs', 'bg-slate-50', 'rounded-2xl', 'p-4')}>
                 <div className={clsx('h-4', 'bg-slate-200', 'rounded', 'w-1/2', 'mb-4', 'animate-pulse')} />
                 {[1, 2].map((i) => <div key={i} className={clsx('h-24', 'bg-white', 'rounded-2xl', 'mb-3', 'animate-pulse', 'border', 'border-slate-100')} />)}
               </div>
             ))}
           </div>
         ) : (
-          <div className={clsx('flex', 'gap-4')}>
+          <div className={clsx('flex', 'h-full', 'min-h-[420px]', 'items-stretch', 'gap-4')}>
             {COLUMNS.map((col) => (
               <KanbanColumn
                 key={col.id}

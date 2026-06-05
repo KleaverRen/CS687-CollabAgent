@@ -7,7 +7,6 @@ import {
   ChevronRight,
   ClipboardCheck,
   Gavel,
-  MessageSquare,
   Search,
   Settings,
   Sparkles,
@@ -890,15 +889,6 @@ function TeamCoordinationHubContent() {
           <ConsensusCenter teamMembers={teamMembers} />
         </div>
       </div>
-
-      <button
-        type="button"
-        className="fixed bottom-6 right-6 z-20 grid h-14 w-14 place-items-center rounded-xl bg-[#0b47c2] text-white shadow-xl transition-colors hover:bg-[#063796] focus:outline-none focus:ring-2 focus:ring-[#0b47c2]/30 focus:ring-offset-2"
-        onClick={() => toast.success("Team support chat opened.")}
-        aria-label="Open team support chat"
-      >
-        <MessageSquare className="h-6 w-6" />
-      </button>
     </Layout>
   );
 }

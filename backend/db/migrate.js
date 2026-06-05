@@ -175,6 +175,17 @@ const createTables = async () => {
     `);
 
     await client.query(`
+      CREATE TABLE IF NOT EXISTS project_messages (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        sender_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        content TEXT NOT NULL CHECK (char_length(content) > 0),
+        edited_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+
+    await client.query(`
       ALTER TABLE notifications
       ADD COLUMN IF NOT EXISTS link TEXT,
       ADD COLUMN IF NOT EXISTS is_read BOOLEAN DEFAULT FALSE;
@@ -286,6 +297,8 @@ const createTables = async () => {
       CREATE INDEX IF NOT EXISTS idx_activity_project_created ON activity_log(project_id, created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_activity_actor_created ON activity_log(actor_id, created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_notifications_user_created ON notifications(user_id, created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_project_messages_project_created ON project_messages(project_id, created_at ASC);
+      CREATE INDEX IF NOT EXISTS idx_project_messages_sender ON project_messages(sender_id);
       CREATE INDEX IF NOT EXISTS idx_ai_workbench_sessions_user_project ON ai_workbench_sessions(user_id, project_id, updated_at DESC);
       CREATE INDEX IF NOT EXISTS idx_ai_workbench_messages_session_created ON ai_workbench_messages(session_id, created_at ASC);
     `);

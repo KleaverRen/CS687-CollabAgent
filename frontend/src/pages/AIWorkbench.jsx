@@ -1607,7 +1607,9 @@ export default function AIWorkbench() {
                     <div className={clsx("font-semibold", "text-[#191c1d]")}>
                       {source.documentTitle}
                     </div>
-                    <div className="mt-1">{source.snippet}</div>
+                    <div className={clsx("mt-2", "whitespace-pre-wrap", "break-words")}>
+                      {source.fullText || source.snippet}
+                    </div>
                   </div>
                 ))}
               </div>

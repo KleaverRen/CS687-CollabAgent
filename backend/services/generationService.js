@@ -1,5 +1,6 @@
 const embeddingService = require("./embeddingService");
 const vectorStorage = require("./vectorStorage");
+const pool = require("../config/database");
 
 class GenerationService {
   constructor() {
@@ -234,13 +235,26 @@ class GenerationService {
 
     // Step 1: Vectorize user query
     const queryVector = await embeddingService.getEmbedding(query);
+    const queryTerms = this.extractSearchTerms(query);
 
     // Step 2: Retrieve relevant context chunks via vector database
-    const contextHits = await vectorStorage.search(
+    let contextHits = await vectorStorage.search(
       queryVector,
       projectId,
       options.limit,
     );
+
+    if (this.shouldUseDocumentFallback(contextHits, queryTerms)) {
+      const databaseHits = await this.findDocumentContextFromDatabase(
+        query,
+        projectId,
+        options.limit,
+        queryTerms,
+      );
+      if (databaseHits.length > 0) {
+        contextHits = databaseHits;
+      }
+    }
 
     if (contextHits.length === 0) {
       return {
@@ -255,7 +269,10 @@ class GenerationService {
       contextHits,
     );
     if (directFocusAnswer) {
-      return this.formatRagResponse(directFocusAnswer, contextHits);
+      return this.formatRagResponse(
+        directFocusAnswer,
+        await this.hydrateSourceFullText(contextHits),
+      );
     }
 
     // Step 3: Construct prompt and generate answer
@@ -275,7 +292,10 @@ class GenerationService {
     }
 
     if (answerText) {
-      return this.formatRagResponse(answerText, contextHits);
+      return this.formatRagResponse(
+        answerText,
+        await this.hydrateSourceFullText(contextHits),
+      );
     }
 
     // Attempt local generation first, then fall back to configured remote providers.
@@ -301,19 +321,196 @@ class GenerationService {
       answerText = this.localReasoningEngine(query, contextHits);
     }
 
-    return this.formatRagResponse(answerText, contextHits);
+    return this.formatRagResponse(
+      answerText,
+      await this.hydrateSourceFullText(contextHits),
+    );
+  }
+
+  shouldUseDocumentFallback(contextHits, queryTerms) {
+    if (contextHits.length === 0) return true;
+    if (queryTerms.length === 0) return false;
+
+    return !contextHits.some((hit) => {
+      const searchable = `${hit.metadata?.title || ""}\n${hit.content || ""}`.toLowerCase();
+      return queryTerms.some((term) => searchable.includes(term));
+    });
+  }
+
+  async findDocumentContextFromDatabase(query, projectId, limit = 3, queryTerms = null) {
+    queryTerms = queryTerms || this.extractSearchTerms(query);
+    if (queryTerms.length === 0) return [];
+
+    try {
+      const result = await pool.query(
+        `SELECT id, title, content, embedding_status, metadata, created_at
+         FROM documents
+         WHERE project_id = $1
+           AND content IS NOT NULL
+           AND char_length(trim(content)) > 0
+           AND COALESCE(embedding_status, 'pending') <> 'failed'
+         ORDER BY created_at DESC
+         LIMIT 25`,
+        [projectId],
+      );
+
+      return result.rows
+        .map((row) => this.scoreDocumentRow(row, queryTerms))
+        .filter((hit) => hit.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, limit)
+        .map((hit, index) => ({
+          chunkId: `${hit.documentId}_db_${index}`,
+          content: hit.content,
+          index,
+          metadata: {
+            ...(hit.metadata || {}),
+            title: hit.title,
+            documentId: hit.documentId,
+            projectId,
+            embeddingStatus: hit.embeddingStatus,
+            source: "document_database",
+            fullText: hit.content,
+          },
+          similarity: Math.min(0.99, parseFloat((hit.score / queryTerms.length).toFixed(4))),
+        }));
+    } catch (err) {
+      console.error("[GenerationService] Database document fallback failed:", err);
+      return [];
+    }
+  }
+
+  async hydrateSourceFullText(contextHits) {
+    const missingDocumentIds = [
+      ...new Set(
+        contextHits
+          .filter((hit) => !hit.metadata?.fullText && hit.metadata?.documentId)
+          .map((hit) => hit.metadata.documentId),
+      ),
+    ];
+
+    if (missingDocumentIds.length === 0) return contextHits;
+
+    try {
+      const result = await pool.query(
+        `SELECT id, content
+         FROM documents
+         WHERE id = ANY($1::uuid[])
+           AND content IS NOT NULL
+           AND char_length(trim(content)) > 0`,
+        [missingDocumentIds],
+      );
+      const contentById = new Map(result.rows.map((row) => [row.id, row.content]));
+
+      return contextHits.map((hit) => ({
+        ...hit,
+        metadata: {
+          ...hit.metadata,
+          fullText: contentById.get(hit.metadata.documentId) || hit.metadata.fullText,
+        },
+      }));
+    } catch (err) {
+      console.error("[GenerationService] Failed to hydrate source full text:", err);
+      return contextHits;
+    }
+  }
+
+  extractSearchTerms(text) {
+    const stopWords = new Set([
+      "what",
+      "which",
+      "when",
+      "where",
+      "should",
+      "track",
+      "focused",
+      "focus",
+      "about",
+      "with",
+      "from",
+      "this",
+      "that",
+      "have",
+      "does",
+      "into",
+      "and",
+      "the",
+      "for",
+      "are",
+      "our",
+      "you",
+    ]);
+
+    return [
+      ...new Set(
+        String(text || "")
+          .toLowerCase()
+          .replace(/[^\w\s]/g, " ")
+          .split(/\s+/)
+          .map((term) => term.trim())
+          .filter((term) => term.length > 2 && !stopWords.has(term)),
+      ),
+    ];
+  }
+
+  scoreDocumentRow(row, queryTerms) {
+    const title = String(row.title || "");
+    const content = String(row.content || "");
+    const searchable = `${title}\n${content}`.toLowerCase();
+    let score = 0;
+
+    for (const term of queryTerms) {
+      if (title.toLowerCase().includes(term)) score += 3;
+      if (searchable.includes(term)) score += 1;
+    }
+
+    const phaseMatch = queryTerms.find((term) => /^\d+$/.test(term));
+    if (phaseMatch && searchable.includes(`phase ${phaseMatch}`)) score += 4;
+
+    return {
+      documentId: row.id,
+      title,
+      content,
+      metadata: row.metadata,
+      embeddingStatus: row.embedding_status,
+      score,
+    };
   }
 
   formatRagResponse(answerText, contextHits) {
+    const sourcesByDocument = new Map();
+
+    for (const hit of contextHits) {
+      const documentId = hit.metadata.documentId || hit.chunkId;
+      const existing = sourcesByDocument.get(documentId);
+      const snippet = this.buildSnippet(hit.content);
+
+      if (!existing) {
+        sourcesByDocument.set(documentId, {
+          chunkId: hit.chunkId,
+          documentTitle: hit.metadata.title,
+          documentId,
+          similarity: hit.similarity,
+          snippet,
+          fullText: hit.metadata.fullText || hit.content,
+        });
+        continue;
+      }
+
+      if (hit.similarity > existing.similarity) {
+        existing.chunkId = hit.chunkId;
+        existing.similarity = hit.similarity;
+      }
+
+      if (!existing.snippet.includes(snippet)) {
+        existing.snippet = `${existing.snippet}\n\n${snippet}`;
+      }
+      existing.fullText = existing.fullText || hit.metadata.fullText || hit.content;
+    }
+
     return {
       answer: answerText,
-      sources: contextHits.map((hit) => ({
-        chunkId: hit.chunkId,
-        documentTitle: hit.metadata.title,
-        documentId: hit.metadata.documentId,
-        similarity: hit.similarity,
-        snippet: this.buildSnippet(hit.content),
-      })),
+      sources: Array.from(sourcesByDocument.values()),
     };
   }
 
@@ -441,7 +638,12 @@ class GenerationService {
             ? 3
             : 0) +
           (/live data|state management/i.test(sentence) ? 1 : 0) -
-          (/^In Phase 2\b/i.test(sentence) ? 2 : 0),
+          (/^In Phase 2\b/i.test(sentence) ? 2 : 0) +
+          (/project goal|workstreams?|use case|agent role|technical feasibility|data readiness|roi/i.test(
+            sentence,
+          )
+            ? 3
+            : 0),
       }))
       .filter((item) => item.score > 0)
       .sort((a, b) => b.score - a.score || a.index - b.index)
@@ -449,11 +651,36 @@ class GenerationService {
       .sort((a, b) => a.index - b.index)
       .map((item) => item.sentence);
 
+    const riskSentences = /\brisk|risks\b/.test(cleanQuery)
+      ? uniqueSentences
+          .map((sentence, index) => ({
+            sentence,
+            index,
+            score:
+              (/risk|risks|hallucination|cost|token|pii|redaction|access|dependency|feasibility/i.test(
+                sentence,
+              )
+                ? 3
+                : 0) +
+              (/ROI & Risk|Data Readiness|Technical Feasibility/i.test(sentence)
+                ? 2
+                : 0),
+          }))
+          .filter((item) => item.score > 0)
+          .sort((a, b) => b.score - a.score || a.index - b.index)
+          .slice(0, 4)
+          .sort((a, b) => a.index - b.index)
+          .map((item) => item.sentence)
+      : [];
+
     const details = supportingSentences.length
       ? ` The supporting details are: ${supportingSentences.join(" ")}`
       : "";
+    const risks = riskSentences.length
+      ? ` Risks to track include: ${riskSentences.join(" ")}`
+      : "";
 
-    return `${phaseMatch[0].replace(/\b\w/g, (char) => char.toUpperCase())} focuses on ${titleFocus}.${details}`;
+    return `${phaseMatch[0].replace(/\b\w/g, (char) => char.toUpperCase())} focuses on ${titleFocus}.${details}${risks}`;
   }
 
   async queryGroq(query, chunks) {

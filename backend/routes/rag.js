@@ -4,6 +4,7 @@ const { body, validationResult } = require('express-validator');
 const eventBroker = require('../services/eventBroker');
 const vectorStorage = require('../services/vectorStorage');
 const generationService = require('../services/generationService');
+const pool = require('../config/database');
 const { authenticate } = require('../middleware/auth');
 const { canReadProject, canWriteProject } = require('../services/projectAccess');
 
@@ -45,7 +46,7 @@ router.post(
     }
 
     const { title, content, projectId, metadata = {} } = req.body;
-    const documentId = `doc_${Math.random().toString(36).substring(2, 11)}`;
+    let documentId = null;
 
     try {
       if (!(await canWriteProject(req.user, projectId))) {
@@ -56,6 +57,34 @@ router.post(
     }
 
     console.log(`[RAG-Router] 📥 Received ingestion request for: "${title}" in project [${projectId}]`);
+
+    try {
+      const inserted = await pool.query(
+        `INSERT INTO documents (
+           project_id, uploaded_by, title, content, file_type,
+           file_size_bytes, indexed, embedding_status, metadata
+         )
+         VALUES ($1, $2, $3, $4, 'txt', $5, FALSE, 'queued', $6)
+         RETURNING id`,
+        [
+          projectId,
+          req.user.id,
+          title,
+          content,
+          Buffer.byteLength(content, 'utf8'),
+          JSON.stringify({
+            ...metadata,
+            progress: 5,
+            source: metadata.source || 'workbench_text',
+            characterCount: content.length,
+          }),
+        ],
+      );
+      documentId = inserted.rows[0].id;
+    } catch (err) {
+      console.error('[RAG-Router] Failed to store document before ingestion:', err);
+      return res.status(500).json({ error: 'Failed to queue document for indexing.' });
+    }
 
     // 1. Kick off the asynchronous ingestion pipeline by publishing the created event
     const eventId = eventBroker.publish('document.created', {
