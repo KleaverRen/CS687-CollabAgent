@@ -1,0 +1,11 @@
+full_name,email,institution,job_title,location,organization,bio,research_interests
+Dr Amelia Hart,amelia.hart@seed.collabagent.test,City University,Professor,Seattle WA,School of Computer Science,Advises applied AI and collaborative systems projects,AI;human computer interaction;collaboration
+Dr Benjamin Ortiz,benjamin.ortiz@seed.collabagent.test,City University,Associate Professor,Seattle WA,School of Computer Science,Advises data platforms and software engineering teams,data systems;software engineering;cloud computing
+Dr Chloe Singh,chloe.singh@seed.collabagent.test,City University,Assistant Professor,Seattle WA,School of Computer Science,Advises responsible AI and evaluation research,responsible AI;machine learning;evaluation
+Dr Daniel Kim,daniel.kim@seed.collabagent.test,City University,Professor,Seattle WA,School of Computer Science,Advises distributed systems and infrastructure projects,distributed systems;networking;security
+Dr Elena Rossi,elena.rossi@seed.collabagent.test,City University,Associate Professor,Seattle WA,School of Computer Science,Advises product focused research and analytics projects,analytics;product research;data visualization
+Dr Farah Ahmed,farah.ahmed@seed.collabagent.test,City University,Assistant Professor,Seattle WA,School of Computer Science,Advises natural language processing and knowledge systems,NLP;information retrieval;knowledge graphs
+Dr Gabriel Moore,gabriel.moore@seed.collabagent.test,City University,Professor,Seattle WA,School of Computer Science,Advises cybersecurity and privacy engineering projects,cybersecurity;privacy;threat modeling
+Dr Hana Watanabe,hana.watanabe@seed.collabagent.test,City University,Associate Professor,Seattle WA,School of Computer Science,Advises robotics and intelligent agent projects,robotics;autonomous agents;planning
+Dr Isaac Brooks,isaac.brooks@seed.collabagent.test,City University,Assistant Professor,Seattle WA,School of Computer Science,Advises learning technology and educational AI projects,learning technology;AI tutoring;assessment
+Dr Julia Nguyen,julia.nguyen@seed.collabagent.test,City University,Professor,Seattle WA,School of Computer Science,Advises health informatics and applied ML projects,health informatics;applied ML;data ethics

@@ -1372,9 +1372,7 @@ export default function AIWorkbench() {
         metadata: {
           draftType: "task_list_confirmation",
           createdCount: created.length,
-          createdTitles: created
-            .map((task) => task?.title)
-            .filter(Boolean),
+          createdTitles: created.map((task) => task?.title).filter(Boolean),
           createdTaskIds: created.map((task) => task?.id).filter(Boolean),
         },
       };
@@ -1607,7 +1605,13 @@ export default function AIWorkbench() {
                     <div className={clsx("font-semibold", "text-[#191c1d]")}>
                       {source.documentTitle}
                     </div>
-                    <div className={clsx("mt-2", "whitespace-pre-wrap", "break-words")}>
+                    <div
+                      className={clsx(
+                        "mt-2",
+                        "whitespace-pre-wrap",
+                        "break-words",
+                      )}
+                    >
                       {source.fullText || source.snippet}
                     </div>
                   </div>
@@ -2238,139 +2242,139 @@ export default function AIWorkbench() {
                   <LoadingText loading idle="Loading chat history..." />
                 ) : visibleSessions.length ? (
                   <div className="space-y-2">
-                  {visibleSessions.map((session, index) => {
-                    const active = activeChatSessionId === session.id;
-                    const sessionAgent =
-                      tabs.find((tab) => tab.id === session.active_agent) ||
-                      tabs[0];
+                    {visibleSessions.map((session, index) => {
+                      const active = activeChatSessionId === session.id;
+                      const sessionAgent =
+                        tabs.find((tab) => tab.id === session.active_agent) ||
+                        tabs[0];
 
-                    return (
-                      <div key={session.id}>
-                        {index === 6 && (
-                          <div className="px-4 py-3 text-xs font-semibold text-[#9aa0ae]">
-                            Last 7 Days
-                          </div>
-                        )}
-                        <article
-                          className={clsx(
-                            "group relative flex items-center gap-3 rounded-xl px-3 py-3 transition-colors",
-                            active
-                              ? "bg-[#d6e0f1] text-[#003fb1]"
-                              : "text-[#434654] hover:bg-[#f3f4f5]",
-                          )}
-                        >
-                          <MessageCircle className="h-4 w-4 shrink-0" />
-                          {editingSessionId === session.id ? (
-                            <div
-                              className="min-w-0 flex-1"
-                              onClick={(event) => event.stopPropagation()}
-                            >
-                              <input
-                                autoFocus
-                                value={editingSessionTitle}
-                                onChange={(event) =>
-                                  setEditingSessionTitle(event.target.value)
-                                }
-                                onKeyDown={(event) => {
-                                  if (event.key === "Enter") {
-                                    event.preventDefault();
-                                    saveSessionTitle(session.id);
-                                  }
-                                  if (event.key === "Escape") {
-                                    event.preventDefault();
-                                    cancelEditingSessionTitle();
-                                  }
-                                }}
-                                className="h-8 w-full rounded-lg border border-[#c3c5d7] bg-white px-2 text-sm font-semibold text-[#191c1d] outline-none focus:border-[#003fb1] focus:ring-2 focus:ring-[#003fb1]/15"
-                              />
-                              <div className="mt-1 flex gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => saveSessionTitle(session.id)}
-                                  disabled={
-                                    savingSessionTitleId === session.id ||
-                                    !editingSessionTitle.trim()
-                                  }
-                                  className="text-[11px] font-bold text-[#003fb1] disabled:opacity-50"
-                                >
-                                  Save
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={cancelEditingSessionTitle}
-                                  className="text-[11px] font-semibold text-[#737686]"
-                                >
-                                  Cancel
-                                </button>
-                              </div>
+                      return (
+                        <div key={session.id}>
+                          {index === 6 && (
+                            <div className="px-4 py-3 text-xs font-semibold text-[#9aa0ae]">
+                              Last 7 Days
                             </div>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                resetWorkbenchOutputs();
-                                setActiveChatSessionId(session.id);
-                              }}
-                              className="min-w-0 flex-1 text-left"
-                            >
-                              <h2 className="truncate text-sm font-semibold">
-                                {session.title}
-                              </h2>
-                              <p className="mt-0.5 truncate text-[11px] text-[#8a90a0]">
-                                {session.last_message || sessionAgent.label}
-                              </p>
-                            </button>
                           )}
-                          <div
+                          <article
                             className={clsx(
-                              "flex shrink-0 items-center gap-1",
-                              active || editingSessionId === session.id
-                                ? "opacity-100"
-                                : "opacity-0 group-hover:opacity-100",
+                              "group relative flex items-center gap-3 rounded-xl px-3 py-3 transition-colors",
+                              active
+                                ? "bg-[#d6e0f1] text-[#003fb1]"
+                                : "text-[#434654] hover:bg-[#f3f4f5]",
                             )}
                           >
-                            {editingSessionId !== session.id && (
+                            <MessageCircle className="h-4 w-4 shrink-0" />
+                            {editingSessionId === session.id ? (
+                              <div
+                                className="min-w-0 flex-1"
+                                onClick={(event) => event.stopPropagation()}
+                              >
+                                <input
+                                  autoFocus
+                                  value={editingSessionTitle}
+                                  onChange={(event) =>
+                                    setEditingSessionTitle(event.target.value)
+                                  }
+                                  onKeyDown={(event) => {
+                                    if (event.key === "Enter") {
+                                      event.preventDefault();
+                                      saveSessionTitle(session.id);
+                                    }
+                                    if (event.key === "Escape") {
+                                      event.preventDefault();
+                                      cancelEditingSessionTitle();
+                                    }
+                                  }}
+                                  className="h-8 w-full rounded-lg border border-[#c3c5d7] bg-white px-2 text-sm font-semibold text-[#191c1d] outline-none focus:border-[#003fb1] focus:ring-2 focus:ring-[#003fb1]/15"
+                                />
+                                <div className="mt-1 flex gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => saveSessionTitle(session.id)}
+                                    disabled={
+                                      savingSessionTitleId === session.id ||
+                                      !editingSessionTitle.trim()
+                                    }
+                                    className="text-[11px] font-bold text-[#003fb1] disabled:opacity-50"
+                                  >
+                                    Save
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={cancelEditingSessionTitle}
+                                    className="text-[11px] font-semibold text-[#737686]"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  resetWorkbenchOutputs();
+                                  setActiveChatSessionId(session.id);
+                                }}
+                                className="min-w-0 flex-1 text-left"
+                              >
+                                <h2 className="truncate text-sm font-semibold">
+                                  {session.title}
+                                </h2>
+                                <p className="mt-0.5 truncate text-[11px] text-[#8a90a0]">
+                                  {session.last_message || sessionAgent.label}
+                                </p>
+                              </button>
+                            )}
+                            <div
+                              className={clsx(
+                                "flex shrink-0 items-center gap-1",
+                                active || editingSessionId === session.id
+                                  ? "opacity-100"
+                                  : "opacity-0 group-hover:opacity-100",
+                              )}
+                            >
+                              {editingSessionId !== session.id && (
+                                <button
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    startEditingSessionTitle(session);
+                                  }}
+                                  className="grid h-7 w-7 place-items-center rounded-lg text-[#6b6f85] hover:bg-white"
+                                  aria-label={`Rename chat ${session.title}`}
+                                  title="Rename chat"
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </button>
+                              )}
                               <button
                                 type="button"
                                 onClick={(event) => {
                                   event.stopPropagation();
-                                  startEditingSessionTitle(session);
+                                  setSessionPendingDelete(session);
                                 }}
-                                className="grid h-7 w-7 place-items-center rounded-lg text-[#6b6f85] hover:bg-white"
-                                aria-label={`Rename chat ${session.title}`}
-                                title="Rename chat"
+                                disabled={deletingSessionId === session.id}
+                                className="grid h-7 w-7 place-items-center rounded-lg text-[#6b6f85] hover:bg-white disabled:opacity-60"
+                                aria-label={`Delete chat ${session.title}`}
+                                title="Delete chat"
                               >
-                                <Pencil className="h-3.5 w-3.5" />
+                                {deletingSessionId === session.id ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-4 w-4" />
+                                )}
                               </button>
-                            )}
-                            <button
-                              type="button"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                setSessionPendingDelete(session);
-                              }}
-                              disabled={deletingSessionId === session.id}
-                              className="grid h-7 w-7 place-items-center rounded-lg text-[#6b6f85] hover:bg-white disabled:opacity-60"
-                              aria-label={`Delete chat ${session.title}`}
-                              title="Delete chat"
-                            >
-                              {deletingSessionId === session.id ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
-                                <Trash2 className="h-4 w-4" />
-                              )}
-                            </button>
-                          </div>
-                        </article>
-                      </div>
-                    );
-                  })}
+                            </div>
+                          </article>
+                        </div>
+                      );
+                    })}
                   </div>
                 ) : (
                   <div className="rounded-lg border border-[#e1e3e4] bg-[#f8f9fb] p-4 text-sm text-[#434654]">
-                  {normalizedSearch
-                    ? "No saved chats match the current search."
-                    : "No saved chats yet."}
+                    {normalizedSearch
+                      ? "No saved chats match the current search."
+                      : "No saved chats yet."}
                   </div>
                 )}
               </div>
@@ -2378,239 +2382,239 @@ export default function AIWorkbench() {
 
             <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-white">
               <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-36 pt-6 lg:px-10 xl:px-14">
-              <div className="mx-auto max-w-4xl space-y-8">
-                <div className="mx-auto w-fit rounded-full bg-[#f2f4fa] px-4 py-1.5 text-xs font-semibold text-[#7b8191]">
-                  Conversation initiated at{" "}
-                  {new Date(
-                    chatMessages[0]?.timestamp || Date.now(),
-                  ).toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </div>
+                <div className="mx-auto max-w-4xl space-y-8">
+                  <div className="mx-auto w-fit rounded-full bg-[#f2f4fa] px-4 py-1.5 text-xs font-semibold text-[#7b8191]">
+                    Conversation initiated at{" "}
+                    {new Date(
+                      chatMessages[0]?.timestamp || Date.now(),
+                    ).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </div>
 
-                {visibleMessages.map((message) => {
-                  const messageAgent =
-                    tabs.find((tab) => tab.id === message.agentId) ||
-                    activeAgent;
-                  const timeLabel = new Date(
-                    message.timestamp,
-                  ).toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  });
-                  const readableAgentText =
-                    message.sender === "agent"
-                      ? normalizeAgentMarkdown(message.text)
-                      : message.text;
+                  {visibleMessages.map((message) => {
+                    const messageAgent =
+                      tabs.find((tab) => tab.id === message.agentId) ||
+                      activeAgent;
+                    const timeLabel = new Date(
+                      message.timestamp,
+                    ).toLocaleTimeString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    });
+                    const readableAgentText =
+                      message.sender === "agent"
+                        ? normalizeAgentMarkdown(message.text)
+                        : message.text;
 
-                  if (message.sender === "user") {
+                    if (message.sender === "user") {
+                      return (
+                        <section key={message.id} className="flex gap-3">
+                          <div className="mt-1 grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#003fb1] text-sm font-bold text-white">
+                            {user?.full_name?.charAt(0)?.toUpperCase() || "U"}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="mb-2 flex items-center gap-2 text-sm">
+                              <span className="font-bold text-[#242733]">
+                                {user?.full_name || "User"}
+                              </span>
+                              <span className="text-xs font-semibold text-[#9aa0ae]">
+                                {timeLabel}
+                              </span>
+                            </div>
+                            <p className="whitespace-pre-wrap text-[15px] leading-7 text-[#242733]">
+                              {message.text}
+                            </p>
+                          </div>
+                        </section>
+                      );
+                    }
+
                     return (
                       <section key={message.id} className="flex gap-3">
-                        <div className="mt-1 grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#003fb1] text-sm font-bold text-white">
-                          {user?.full_name?.charAt(0)?.toUpperCase() || "U"}
-                        </div>
+                        <AgentAvatar agent={messageAgent} className="mt-1" />
                         <div className="min-w-0 flex-1">
                           <div className="mb-2 flex items-center gap-2 text-sm">
-                            <span className="font-bold text-[#242733]">
-                              {user?.full_name || "User"}
+                            <span className="font-black uppercase tracking-[0.08em] text-[#003fb1]">
+                              {messageAgent.label}
                             </span>
                             <span className="text-xs font-semibold text-[#9aa0ae]">
                               {timeLabel}
                             </span>
                           </div>
-                          <p className="whitespace-pre-wrap text-[15px] leading-7 text-[#242733]">
-                            {message.text}
-                          </p>
+                          <div className="prose prose-sm max-w-none text-[#1f2430] prose-p:my-2 prose-p:leading-7 prose-ol:my-3 prose-li:my-1 prose-strong:text-[#161821] prose-pre:rounded-2xl prose-pre:bg-[#111827]">
+                            {message.stream ? (
+                              <StreamingMessage
+                                text={readableAgentText}
+                                stream={!!message.stream}
+                              />
+                            ) : (
+                              <ReactMarkdown>{readableAgentText}</ReactMarkdown>
+                            )}
+                          </div>
+                          <div className="mt-4 flex items-center gap-2 text-[#8a90a0]">
+                            <button
+                              type="button"
+                              className="grid h-8 w-8 place-items-center rounded-full hover:bg-[#f2f4fa] hover:text-[#003fb1]"
+                              aria-label="Mark response helpful"
+                            >
+                              <ThumbsUp className="h-4 w-4" />
+                            </button>
+                            <button
+                              type="button"
+                              className="grid h-8 w-8 place-items-center rounded-full hover:bg-[#f2f4fa] hover:text-[#003fb1]"
+                              aria-label="Mark response not helpful"
+                            >
+                              <ThumbsDown className="h-4 w-4" />
+                            </button>
+                            <button
+                              type="button"
+                              className="grid h-8 w-8 place-items-center rounded-full hover:bg-[#f2f4fa] hover:text-[#003fb1]"
+                              aria-label="Copy response"
+                            >
+                              <Copy className="h-4 w-4" />
+                            </button>
+                            <button
+                              type="button"
+                              className="ml-auto inline-flex h-8 items-center gap-2 rounded-full px-3 text-xs font-semibold hover:bg-[#f2f4fa] hover:text-[#003fb1]"
+                              onClick={runActiveAgent}
+                              disabled={
+                                Boolean(loadingAction) || !activeChatSessionId
+                              }
+                            >
+                              <RefreshCw className="h-4 w-4" />
+                              Regenerate
+                            </button>
+                          </div>
                         </div>
                       </section>
                     );
-                  }
+                  })}
 
-                  return (
-                    <section key={message.id} className="flex gap-3">
-                      <AgentAvatar agent={messageAgent} className="mt-1" />
-                      <div className="min-w-0 flex-1">
-                        <div className="mb-2 flex items-center gap-2 text-sm">
-                          <span className="font-black uppercase tracking-[0.08em] text-[#003fb1]">
-                            {messageAgent.label}
-                          </span>
-                          <span className="text-xs font-semibold text-[#9aa0ae]">
-                            {timeLabel}
-                          </span>
-                        </div>
-                        <div className="prose prose-sm max-w-none text-[#1f2430] prose-p:my-2 prose-p:leading-7 prose-ol:my-3 prose-li:my-1 prose-strong:text-[#161821] prose-pre:rounded-2xl prose-pre:bg-[#111827]">
-                          {message.stream ? (
-                            <StreamingMessage
-                              text={readableAgentText}
-                              stream={!!message.stream}
-                            />
-                          ) : (
-                            <ReactMarkdown>{readableAgentText}</ReactMarkdown>
-                          )}
-                        </div>
-                        <div className="mt-4 flex items-center gap-2 text-[#8a90a0]">
-                          <button
-                            type="button"
-                            className="grid h-8 w-8 place-items-center rounded-full hover:bg-[#f2f4fa] hover:text-[#003fb1]"
-                            aria-label="Mark response helpful"
-                          >
-                            <ThumbsUp className="h-4 w-4" />
-                          </button>
-                          <button
-                            type="button"
-                            className="grid h-8 w-8 place-items-center rounded-full hover:bg-[#f2f4fa] hover:text-[#003fb1]"
-                            aria-label="Mark response not helpful"
-                          >
-                            <ThumbsDown className="h-4 w-4" />
-                          </button>
-                          <button
-                            type="button"
-                            className="grid h-8 w-8 place-items-center rounded-full hover:bg-[#f2f4fa] hover:text-[#003fb1]"
-                            aria-label="Copy response"
-                          >
-                            <Copy className="h-4 w-4" />
-                          </button>
-                          <button
-                            type="button"
-                            className="ml-auto inline-flex h-8 items-center gap-2 rounded-full px-3 text-xs font-semibold hover:bg-[#f2f4fa] hover:text-[#003fb1]"
-                            onClick={runActiveAgent}
-                            disabled={
-                              Boolean(loadingAction) || !activeChatSessionId
-                            }
-                          >
-                            <RefreshCw className="h-4 w-4" />
-                            Regenerate
-                          </button>
-                        </div>
-                      </div>
-                    </section>
-                  );
-                })}
+                  {visibleMessages.length === 0 && (
+                    <div className="mx-auto max-w-lg rounded-[24px] bg-[#f7f8fc] p-6 text-center text-sm text-[#6b6f85]">
+                      {normalizedSearch
+                        ? "No conversation messages match the current search."
+                        : "No messages yet. Send a prompt to start this chat."}
+                    </div>
+                  )}
 
-                {visibleMessages.length === 0 && (
-                  <div className="mx-auto max-w-lg rounded-[24px] bg-[#f7f8fc] p-6 text-center text-sm text-[#6b6f85]">
-                    {normalizedSearch
-                      ? "No conversation messages match the current search."
-                      : "No messages yet. Send a prompt to start this chat."}
-                  </div>
-                )}
-
-                <div className="pt-2">{renderWorkflow()}</div>
-              </div>
+                  <div className="pt-2">{renderWorkflow()}</div>
+                </div>
               </div>
 
               <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-white via-white/95 to-white/0 px-5 pb-5 pt-16">
                 <div className="pointer-events-auto mx-auto max-w-3xl rounded-2xl bg-white p-2 shadow-xl shadow-slate-200 ring-1 ring-[#e1e3e4]">
-                <div className="flex items-center gap-2">
-                  <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#d6e0f1] text-[#003fb1]">
-                    <Sparkles className="h-4 w-4" />
+                  <div className="flex items-center gap-2">
+                    <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#d6e0f1] text-[#003fb1]">
+                      <Sparkles className="h-4 w-4" />
+                    </div>
+                    <textarea
+                      className="max-h-28 min-h-10 flex-1 resize-none bg-transparent px-2 py-2 text-sm leading-6 text-[#191c1d] outline-none placeholder:text-[#9aa0ae]"
+                      value={composerValue}
+                      onChange={(e) => updateComposer(e.target.value)}
+                      placeholder="What's in your mind? Type '@' to tag an agent..."
+                    />
+                    <div className="hidden items-center gap-1 text-[#8a90a0] sm:flex">
+                      <Paperclip className="h-4 w-4" />
+                      <Mic className="h-4 w-4" />
+                      <Image className="h-4 w-4" />
+                      <AtSign className="h-4 w-4" />
+                    </div>
+                    <button
+                      type="button"
+                      className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-[#003fb1] text-white shadow-sm transition-colors hover:bg-[#0b47c2] disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={Boolean(loadingAction) || !activeChatSessionId}
+                      onClick={runActiveAgent}
+                      aria-label="Send message"
+                    >
+                      {loadingAction ? (
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                      ) : (
+                        <Send className="h-5 w-5" />
+                      )}
+                    </button>
                   </div>
-                  <textarea
-                    className="max-h-28 min-h-10 flex-1 resize-none bg-transparent px-2 py-2 text-sm leading-6 text-[#191c1d] outline-none placeholder:text-[#9aa0ae]"
-                    value={composerValue}
-                    onChange={(e) => updateComposer(e.target.value)}
-                    placeholder="What's in your mind? Type '@' to tag an agent..."
-                  />
-                  <div className="hidden items-center gap-1 text-[#8a90a0] sm:flex">
-                    <Paperclip className="h-4 w-4" />
-                    <Mic className="h-4 w-4" />
-                    <Image className="h-4 w-4" />
-                    <AtSign className="h-4 w-4" />
-                  </div>
-                  <button
-                    type="button"
-                    className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-[#003fb1] text-white shadow-sm transition-colors hover:bg-[#0b47c2] disabled:cursor-not-allowed disabled:opacity-60"
-                    disabled={Boolean(loadingAction) || !activeChatSessionId}
-                    onClick={runActiveAgent}
-                    aria-label="Send message"
-                  >
-                    {loadingAction ? (
-                      <Loader2 className="h-5 w-5 animate-spin" />
-                    ) : (
-                      <Send className="h-5 w-5" />
-                    )}
-                  </button>
                 </div>
-              </div>
               </div>
             </main>
 
-          {isAdvisor && (
-            <aside className="hidden min-h-0 w-[300px] shrink-0 flex-col border-l border-[#e1e3e4] bg-white p-5 2xl:flex">
-              <div className="mb-5 flex items-center justify-between">
-                <h2 className="text-sm font-black uppercase tracking-[0.14em] text-[#242733]">
-                  Advisor View
-                </h2>
-                <Sparkles className="h-5 w-5 text-[#003fb1]" />
-              </div>
-              <div className="mb-5 flex items-center gap-3">
-                <div className="h-2 flex-1 rounded-full bg-[#e5e8f3]">
-                  <div className="h-full w-[65%] rounded-full bg-[#003fb1]" />
+            {isAdvisor && (
+              <aside className="hidden min-h-0 w-[300px] shrink-0 flex-col border-l border-[#e1e3e4] bg-white p-5 2xl:flex">
+                <div className="mb-5 flex items-center justify-between">
+                  <h2 className="text-sm font-black uppercase tracking-[0.14em] text-[#242733]">
+                    Advisor View
+                  </h2>
+                  <Sparkles className="h-5 w-5 text-[#003fb1]" />
                 </div>
-                <span className="text-sm font-bold text-[#242733]">65%</span>
-              </div>
-              <p className="text-sm leading-6 text-[#6b6f85]">
-                AI-generated status based on current workbench messages.
-              </p>
-              <div className="mt-8 space-y-4">
-                <button
-                  className="w-full rounded-xl border border-[#e1e3e4] bg-white p-4 text-left hover:bg-[#f7f8fc]"
-                  onClick={generateProgressReport}
-                >
-                  <span className="block font-bold text-[#242733]">
-                    Generate Weekly Report
-                  </span>
-                  <span className="mt-1 block text-sm text-[#6b6f85]">
-                    Create an advisor-ready project summary.
-                  </span>
-                </button>
-                <button
-                  className="w-full rounded-xl border border-[#e1e3e4] bg-white p-4 text-left hover:bg-[#f7f8fc]"
-                  onClick={() => handleToolSwitch("feedback")}
-                >
-                  <span className="block font-bold text-[#242733]">
-                    Schedule Peer Review
-                  </span>
-                  <span className="mt-1 block text-sm text-[#6b6f85]">
-                    Engage Feedback Agent for validation.
-                  </span>
-                </button>
-              </div>
-              <div className="mt-auto space-y-3">
-                {progressReport && (
+                <div className="mb-5 flex items-center gap-3">
+                  <div className="h-2 flex-1 rounded-full bg-[#e5e8f3]">
+                    <div className="h-full w-[65%] rounded-full bg-[#003fb1]" />
+                  </div>
+                  <span className="text-sm font-bold text-[#242733]">65%</span>
+                </div>
+                <p className="text-sm leading-6 text-[#6b6f85]">
+                  AI-generated status based on current workbench messages.
+                </p>
+                <div className="mt-8 space-y-4">
                   <button
-                    className={clsx(secondaryButton, "w-full")}
-                    onClick={() => setIsEditingReport(!isEditingReport)}
+                    className="w-full rounded-xl border border-[#e1e3e4] bg-white p-4 text-left hover:bg-[#f7f8fc]"
+                    onClick={generateProgressReport}
                   >
-                    {isEditingReport ? "View Preview" : "Edit Report"}
+                    <span className="block font-bold text-[#242733]">
+                      Generate Weekly Report
+                    </span>
+                    <span className="mt-1 block text-sm text-[#6b6f85]">
+                      Create an advisor-ready project summary.
+                    </span>
                   </button>
-                )}
-                <button
-                  className={clsx(primaryButton, "h-12 w-full")}
-                  onClick={generateProgressReport}
-                  disabled={loadingAction === "progress"}
-                >
-                  Export Weekly Report
-                </button>
-              </div>
-            </aside>
-          )}
+                  <button
+                    className="w-full rounded-xl border border-[#e1e3e4] bg-white p-4 text-left hover:bg-[#f7f8fc]"
+                    onClick={() => handleToolSwitch("feedback")}
+                  >
+                    <span className="block font-bold text-[#242733]">
+                      Schedule Peer Review
+                    </span>
+                    <span className="mt-1 block text-sm text-[#6b6f85]">
+                      Engage Feedback Agent for validation.
+                    </span>
+                  </button>
+                </div>
+                <div className="mt-auto space-y-3">
+                  {progressReport && (
+                    <button
+                      className={clsx(secondaryButton, "w-full")}
+                      onClick={() => setIsEditingReport(!isEditingReport)}
+                    >
+                      {isEditingReport ? "View Preview" : "Edit Report"}
+                    </button>
+                  )}
+                  <button
+                    className={clsx(primaryButton, "h-12 w-full")}
+                    onClick={generateProgressReport}
+                    disabled={loadingAction === "progress"}
+                  >
+                    Export Weekly Report
+                  </button>
+                </div>
+              </aside>
+            )}
           </div>
 
-        <DeleteConfirmationModal
-          open={Boolean(sessionPendingDelete)}
-          title="Delete chat?"
-          message="This will permanently remove the saved chat history."
-          itemName={sessionPendingDelete?.title}
-          confirmLabel="Delete Chat"
-          loading={deletingSessionId === sessionPendingDelete?.id}
-          onCancel={() => {
-            if (!deletingSessionId) setSessionPendingDelete(null);
-          }}
-          onConfirm={() => deleteChatSession(sessionPendingDelete?.id)}
-        />
-      </div>
+          <DeleteConfirmationModal
+            open={Boolean(sessionPendingDelete)}
+            title="Delete chat?"
+            message="This will permanently remove the saved chat history."
+            itemName={sessionPendingDelete?.title}
+            confirmLabel="Delete Chat"
+            loading={deletingSessionId === sessionPendingDelete?.id}
+            onCancel={() => {
+              if (!deletingSessionId) setSessionPendingDelete(null);
+            }}
+            onConfirm={() => deleteChatSession(sessionPendingDelete?.id)}
+          />
+        </div>
       </WorkbenchErrorBoundary>
     </Layout>
   );

@@ -33,7 +33,10 @@ const authenticate = async (req, res, next) => {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
     const result = await pool.query(
-      "SELECT id, full_name, email, role, avatar_url, institution FROM users WHERE id = $1",
+      `SELECT id, full_name, email, role, avatar_url, institution, job_title,
+              location, organization, bio, research_interests, publications,
+              academic_links
+       FROM users WHERE id = $1`,
       [decoded.userId],
     );
 
@@ -76,7 +79,10 @@ const authenticateSSE = async (req, res, next) => {
 
     const decoded = jwt.verify(sseToken, process.env.JWT_SECRET);
     const result = await pool.query(
-      "SELECT id, full_name, email, role, avatar_url, institution FROM users WHERE id = $1",
+      `SELECT id, full_name, email, role, avatar_url, institution, job_title,
+              location, organization, bio, research_interests, publications,
+              academic_links
+       FROM users WHERE id = $1`,
       [decoded.userId],
     );
 

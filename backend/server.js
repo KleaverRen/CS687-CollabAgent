@@ -73,6 +73,7 @@ app.get("/health", (req, res) => {
 app.use("/api/auth", authLimiter, authRoutes);
 app.use("/api/projects/:id/documents", documentRoutes);
 app.use("/api/projects/:projectId/chat", chatRoutes);
+app.use("/api/chat", chatRoutes);
 app.use("/api/projects", projectRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/tasks", taskRoutes);

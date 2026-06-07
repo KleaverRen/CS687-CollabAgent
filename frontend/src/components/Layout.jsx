@@ -3,7 +3,7 @@ import { MessageSquare } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import Sidebar from "./Sidebar";
 import ChatDrawer from "./ChatDrawer";
-import { useNotifications } from "../context/NotificationContext";
+import { useChat } from "../context/ChatContext";
 
 export default function Layout({ children, activePath, projectId }) {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -13,23 +13,17 @@ export default function Layout({ children, activePath, projectId }) {
   const [isChatOpen, setIsChatOpen] = useState(
     () => searchParams.get("chat") === "open",
   );
-  const { notifications } = useNotifications();
-
-  const unreadChatCount = notifications.filter((notification) => (
-    notification.type === "chat.message"
-    && notification.project_id === projectId
-    && !notification.is_read
-  )).length;
+  const { unreadCount } = useChat();
 
   useEffect(() => {
     localStorage.setItem("sidebar_collapsed", isCollapsed);
   }, [isCollapsed]);
 
   useEffect(() => {
-    if (searchParams.get("chat") === "open" && projectId) {
+    if (searchParams.get("chat") === "open") {
       setIsChatOpen(true);
     }
-  }, [projectId, searchParams]);
+  }, [searchParams]);
 
   const openChat = () => {
     setIsChatOpen(true);
@@ -68,29 +62,25 @@ export default function Layout({ children, activePath, projectId }) {
         </main>
       </div>
 
-      {projectId ? (
-        <>
-          <button
-            type="button"
-            className="fixed bottom-6 right-6 z-30 grid h-14 w-14 place-items-center rounded-xl bg-[#0b47c2] text-white shadow-xl transition-colors hover:bg-[#063796] focus:outline-none focus:ring-2 focus:ring-[#0b47c2]/30 focus:ring-offset-2"
-            onClick={openChat}
-            aria-label="Open project chat"
-            title="Open project chat"
-          >
-            <MessageSquare className="h-6 w-6" />
-            {unreadChatCount > 0 ? (
-              <span className="absolute -right-1.5 -top-1.5 grid min-h-5 min-w-5 place-items-center rounded-full bg-[#ba1a1a] px-1.5 text-[11px] font-bold text-white ring-2 ring-white">
-                {unreadChatCount > 9 ? "9+" : unreadChatCount}
-              </span>
-            ) : null}
-          </button>
-          <ChatDrawer
-            isOpen={isChatOpen}
-            onClose={closeChat}
-            projectId={projectId}
-          />
-        </>
-      ) : null}
+      <button
+        type="button"
+        className="fixed bottom-6 right-6 z-30 grid h-14 w-14 place-items-center rounded-xl bg-[#0b47c2] text-white shadow-xl transition-colors hover:bg-[#063796] focus:outline-none focus:ring-2 focus:ring-[#0b47c2]/30 focus:ring-offset-2"
+        onClick={openChat}
+        aria-label="Open chat"
+        title="Open chat"
+      >
+        <MessageSquare className="h-6 w-6" />
+        {unreadCount > 0 ? (
+          <span className="absolute -right-1.5 -top-1.5 grid min-h-5 min-w-5 place-items-center rounded-full bg-[#ba1a1a] px-1.5 text-[11px] font-bold text-white ring-2 ring-white">
+            {unreadCount > 9 ? "9+" : unreadCount}
+          </span>
+        ) : null}
+      </button>
+      <ChatDrawer
+        isOpen={isChatOpen}
+        onClose={closeChat}
+        projectId={projectId}
+      />
     </div>
   );
 }

@@ -18,6 +18,7 @@ import AIWorkbench from "./pages/AIWorkbench";
 import TeamCoordinationHub from "./pages/TeamCoordinationHub";
 import DocumentManager from "./pages/DocumentManager";
 import TimelineView from "./pages/TimelineView";
+import ProfilePage from "./pages/ProfilePage";
 
 function AppRoutes() {
   const { user, loading } = useAuth();
@@ -72,6 +73,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <ProjectsDirectory />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/profile"
+        element={
+          <ProtectedRoute>
+            <ProfilePage />
           </ProtectedRoute>
         }
       />

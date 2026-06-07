@@ -15,7 +15,13 @@ const createTables = async () => {
         role VARCHAR(50) NOT NULL DEFAULT 'student' CHECK (role IN ('advisor', 'student')),
         avatar_url TEXT,
         institution VARCHAR(255),
+        job_title VARCHAR(255),
+        location VARCHAR(255),
+        organization VARCHAR(255),
         bio TEXT,
+        research_interests TEXT[] DEFAULT '{}',
+        publications JSONB DEFAULT '[]',
+        academic_links JSONB DEFAULT '{}',
         sso_provider VARCHAR(50),
         sso_id VARCHAR(255),
         email_verified BOOLEAN DEFAULT FALSE,
@@ -39,6 +45,26 @@ const createTables = async () => {
 
       ALTER TABLE users
       ADD CONSTRAINT users_role_check CHECK (role IN ('advisor', 'student'));
+    `);
+
+    await client.query(`
+      ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS avatar_url TEXT,
+      ADD COLUMN IF NOT EXISTS institution VARCHAR(255),
+      ADD COLUMN IF NOT EXISTS job_title VARCHAR(255),
+      ADD COLUMN IF NOT EXISTS location VARCHAR(255),
+      ADD COLUMN IF NOT EXISTS organization VARCHAR(255),
+      ADD COLUMN IF NOT EXISTS bio TEXT,
+      ADD COLUMN IF NOT EXISTS research_interests TEXT[] DEFAULT '{}',
+      ADD COLUMN IF NOT EXISTS publications JSONB DEFAULT '[]',
+      ADD COLUMN IF NOT EXISTS academic_links JSONB DEFAULT '{}',
+      ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+
+      UPDATE users
+      SET
+        research_interests = COALESCE(research_interests, '{}'),
+        publications = COALESCE(publications, '[]'::jsonb),
+        academic_links = COALESCE(academic_links, '{}'::jsonb);
     `);
 
     // Sessions table
@@ -186,6 +212,30 @@ const createTables = async () => {
     `);
 
     await client.query(`
+      CREATE TABLE IF NOT EXISTS direct_conversations (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS direct_conversation_members (
+        conversation_id UUID NOT NULL REFERENCES direct_conversations(id) ON DELETE CASCADE,
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        PRIMARY KEY (conversation_id, user_id)
+      );
+
+      CREATE TABLE IF NOT EXISTS direct_messages (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        conversation_id UUID NOT NULL REFERENCES direct_conversations(id) ON DELETE CASCADE,
+        sender_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        content TEXT NOT NULL CHECK (char_length(content) > 0),
+        edited_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+
+    await client.query(`
       ALTER TABLE notifications
       ADD COLUMN IF NOT EXISTS link TEXT,
       ADD COLUMN IF NOT EXISTS is_read BOOLEAN DEFAULT FALSE;
@@ -299,6 +349,9 @@ const createTables = async () => {
       CREATE INDEX IF NOT EXISTS idx_notifications_user_created ON notifications(user_id, created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_project_messages_project_created ON project_messages(project_id, created_at ASC);
       CREATE INDEX IF NOT EXISTS idx_project_messages_sender ON project_messages(sender_id);
+      CREATE INDEX IF NOT EXISTS idx_direct_conversation_members_user ON direct_conversation_members(user_id);
+      CREATE INDEX IF NOT EXISTS idx_direct_messages_conversation_created ON direct_messages(conversation_id, created_at ASC);
+      CREATE INDEX IF NOT EXISTS idx_direct_messages_sender ON direct_messages(sender_id);
       CREATE INDEX IF NOT EXISTS idx_ai_workbench_sessions_user_project ON ai_workbench_sessions(user_id, project_id, updated_at DESC);
       CREATE INDEX IF NOT EXISTS idx_ai_workbench_messages_session_created ON ai_workbench_messages(session_id, created_at ASC);
     `);

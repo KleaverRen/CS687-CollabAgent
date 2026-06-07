@@ -7,6 +7,123 @@ const { authenticate } = require("../middleware/auth");
 
 router.use(authenticate);
 
+const DEFAULT_PROFILE = {
+  job_title: "Director of Computational Ethics",
+  organization: "CollabAgent AI",
+  location: "San Francisco, CA",
+  bio: "This researcher has not added a professional overview yet.",
+  research_interests: [
+    "Neural Alignment",
+    "Ethical AI",
+    "Societal Bias",
+    "Human-AI Collaboration",
+    "Computational Ethics",
+    "Bias Detection",
+  ],
+  publications: [
+    {
+      title: "Measuring Alignment Drift in Collaborative Agent Systems",
+      publisher: "MIT Press",
+      year: "2022",
+      href: "#alignment-drift",
+    },
+    {
+      title: "Human Review Loops for High-Impact Generative Workflows",
+      publisher: "ACM FAccT Proceedings",
+      year: "2023",
+      href: "#review-loops",
+    },
+    {
+      title: "Bias Detection Under Multi-Agent Summarization",
+      publisher: "Journal of Responsible AI",
+      year: "2024",
+      href: "#bias-detection",
+    },
+  ],
+  academic_links: {
+    google_scholar: "https://scholar.google.com",
+    github: "https://github.com",
+    orcid: "https://orcid.org",
+    cv: "/Aurora-Thorne-CV.pdf",
+  },
+};
+
+const PROFILE_SELECT = `
+  SELECT id, full_name, email, role, avatar_url, institution, job_title,
+         location, organization, bio, research_interests, publications,
+         academic_links, created_at, updated_at,
+         (SELECT COUNT(*) FROM projects WHERE owner_id = u.id) AS projects_owned,
+         (SELECT COUNT(*) FROM project_members WHERE user_id = u.id) AS projects_joined
+  FROM users u
+  WHERE id = $1
+`;
+
+function compactString(value) {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  return trimmed.length ? trimmed : null;
+}
+
+function normalizePublication(publication) {
+  if (!publication || typeof publication !== "object" || Array.isArray(publication)) {
+    return null;
+  }
+  const title = compactString(publication.title);
+  if (!title) return null;
+  return {
+    title,
+    publisher: compactString(publication.publisher) || "Independent Research",
+    year: compactString(publication.year) || new Date().getFullYear().toString(),
+    href: compactString(publication.href) || "#",
+  };
+}
+
+function normalizeAcademicLinks(links) {
+  if (!links || typeof links !== "object" || Array.isArray(links)) return {};
+  return {
+    google_scholar: compactString(links.google_scholar),
+    github: compactString(links.github),
+    orcid: compactString(links.orcid),
+    cv: compactString(links.cv),
+  };
+}
+
+function serializeProfile(row) {
+  const researchInterests =
+    Array.isArray(row.research_interests) && row.research_interests.length
+      ? row.research_interests
+      : DEFAULT_PROFILE.research_interests;
+  const publications =
+    Array.isArray(row.publications) && row.publications.length
+      ? row.publications
+      : DEFAULT_PROFILE.publications;
+  const academicLinks =
+    row.academic_links && Object.keys(row.academic_links).length
+      ? row.academic_links
+      : DEFAULT_PROFILE.academic_links;
+
+  return {
+    id: row.id,
+    full_name: row.full_name,
+    email: row.email,
+    role: row.role,
+    avatar_url: row.avatar_url,
+    institution: row.institution,
+    job_title: row.job_title || DEFAULT_PROFILE.job_title,
+    location: row.location || DEFAULT_PROFILE.location,
+    organization:
+      row.organization || row.institution || DEFAULT_PROFILE.organization,
+    bio: row.bio || DEFAULT_PROFILE.bio,
+    research_interests: researchInterests,
+    publications,
+    academic_links: academicLinks,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    projects_owned: Number(row.projects_owned || 0),
+    projects_joined: Number(row.projects_joined || 0),
+  };
+}
+
 // GET /api/users - List users with optional role filtering
 router.get("/", async (req, res) => {
   const { role } = req.query;
@@ -38,15 +155,13 @@ router.get("/", async (req, res) => {
 // GET /api/users/profile
 router.get("/profile", async (req, res) => {
   try {
-    const result = await pool.query(
-      `SELECT id, full_name, email, role, avatar_url, institution, bio, created_at,
-        (SELECT COUNT(*) FROM projects WHERE owner_id = u.id) as projects_owned,
-        (SELECT COUNT(*) FROM project_members WHERE user_id = u.id) as projects_joined
-       FROM users u WHERE id = $1`,
-      [req.user.id],
-    );
-    res.json({ user: result.rows[0] });
+    const result = await pool.query(PROFILE_SELECT, [req.user.id]);
+    if (!result.rows.length) {
+      return res.status(404).json({ error: "Profile not found" });
+    }
+    res.json({ user: serializeProfile(result.rows[0]) });
   } catch (err) {
+    console.error("Fetch profile error:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -55,29 +170,136 @@ router.get("/profile", async (req, res) => {
 router.patch(
   "/profile",
   [
-    body("full_name").optional().trim().notEmpty(),
-    body("institution").optional().trim(),
-    body("bio").optional().trim().isLength({ max: 500 }),
+    body("full_name")
+      .optional()
+      .isString()
+      .trim()
+      .isLength({ min: 1, max: 255 })
+      .withMessage("Full name must be 1-255 characters."),
+    body("institution")
+      .optional({ nullable: true })
+      .isString()
+      .trim()
+      .isLength({ max: 255 })
+      .withMessage("Institution must be 255 characters or fewer."),
+    body("job_title")
+      .optional({ nullable: true })
+      .isString()
+      .trim()
+      .isLength({ max: 255 })
+      .withMessage("Job title must be 255 characters or fewer."),
+    body("location")
+      .optional({ nullable: true })
+      .isString()
+      .trim()
+      .isLength({ max: 255 })
+      .withMessage("Location must be 255 characters or fewer."),
+    body("organization")
+      .optional({ nullable: true })
+      .isString()
+      .trim()
+      .isLength({ max: 255 })
+      .withMessage("Organization must be 255 characters or fewer."),
+    body("bio")
+      .optional({ nullable: true })
+      .isString()
+      .trim()
+      .isLength({ max: 1200 })
+      .withMessage("Bio must be 1200 characters or fewer."),
+    body("avatar_url")
+      .optional({ nullable: true })
+      .isString()
+      .trim()
+      .isLength({ max: 2048 })
+      .withMessage("Avatar URL must be 2048 characters or fewer."),
+    body("research_interests")
+      .optional()
+      .isArray({ max: 20 })
+      .withMessage("Research interests must be a list of up to 20 tags."),
+    body("research_interests.*")
+      .optional()
+      .isString()
+      .trim()
+      .isLength({ min: 1, max: 80 })
+      .withMessage("Each research interest must be 1-80 characters."),
+    body("publications")
+      .optional()
+      .isArray({ max: 20 })
+      .withMessage("Publications must be a list of up to 20 records."),
+    body("academic_links")
+      .optional()
+      .isObject()
+      .withMessage("Academic links must be an object."),
   ],
   async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty())
       return res.status(400).json({ errors: errors.array() });
 
-    const { full_name, institution, bio, avatar_url } = req.body;
+    const updates = {};
+    [
+      "full_name",
+      "institution",
+      "job_title",
+      "location",
+      "organization",
+      "bio",
+      "avatar_url",
+    ].forEach((field) => {
+      if (Object.prototype.hasOwnProperty.call(req.body, field)) {
+        updates[field] = compactString(req.body[field]);
+      }
+    });
+
+    if (Object.prototype.hasOwnProperty.call(req.body, "research_interests")) {
+      updates.research_interests = [
+        ...new Set(
+          req.body.research_interests
+            .map(compactString)
+            .filter(Boolean),
+        ),
+      ];
+    }
+
+    if (Object.prototype.hasOwnProperty.call(req.body, "publications")) {
+      updates.publications = req.body.publications
+        .map(normalizePublication)
+        .filter(Boolean);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(req.body, "academic_links")) {
+      updates.academic_links = normalizeAcademicLinks(req.body.academic_links);
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ error: "No profile fields provided" });
+    }
+
     try {
+      const fields = [];
+      const values = [];
+      Object.entries(updates).forEach(([field, value]) => {
+        values.push(value);
+        fields.push(`${field} = $${values.length}`);
+      });
+      values.push(req.user.id);
+
       const result = await pool.query(
-        `UPDATE users SET
-          full_name = COALESCE($1, full_name),
-          institution = COALESCE($2, institution),
-          bio = COALESCE($3, bio),
-          avatar_url = COALESCE($4, avatar_url)
-         WHERE id = $5
-         RETURNING id, full_name, email, role, avatar_url, institution, bio`,
-        [full_name, institution, bio, avatar_url, req.user.id],
+        `UPDATE users
+         SET ${fields.join(", ")}, updated_at = NOW()
+         WHERE id = $${values.length}
+         RETURNING id`,
+        values,
       );
-      res.json({ user: result.rows[0] });
+
+      if (!result.rows.length) {
+        return res.status(404).json({ error: "Profile not found" });
+      }
+
+      const profileResult = await pool.query(PROFILE_SELECT, [req.user.id]);
+      res.json({ user: serializeProfile(profileResult.rows[0]) });
     } catch (err) {
+      console.error("Update profile error:", err);
       res.status(500).json({ error: "Internal server error" });
     }
   },

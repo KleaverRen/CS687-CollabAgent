@@ -13,6 +13,7 @@ import {
   PanelLeftOpen,
   Settings,
   Sparkles,
+  User,
   Users,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
@@ -26,12 +27,11 @@ export default function Sidebar({
 }) {
   const { user, logout } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
-
   const globalItems = [
     { label: "Home", icon: Home, href: "/dashboard" },
     { label: "Projects", icon: FolderOpen, href: "/projects" },
+    { label: "Profile", icon: User, href: "/profile" },
   ];
-
   const contextItems = [];
   if (projectId) {
     contextItems.push({
