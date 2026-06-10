@@ -10,6 +10,7 @@ import React, {
 import api from "../utils/api";
 import { useAuth } from "./AuthContext";
 import { useNotifications } from "./NotificationContext";
+import { createNotificationStream } from "../utils/notificationStream";
 
 const ChatContext = createContext(null);
 const PAGE_SIZE = 50;
@@ -290,11 +291,10 @@ export function ChatProvider({ children }) {
   );
 
   useEffect(() => {
-    if (!user || typeof EventSource === "undefined") return undefined;
+    if (!user) return undefined;
 
-    const source = new EventSource("/api/notifications/stream", {
-      withCredentials: true,
-    });
+    const source = createNotificationStream();
+    if (!source) return undefined;
 
     const handleMessage = (message) => {
       const active = activeConversationRef.current;

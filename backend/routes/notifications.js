@@ -140,9 +140,11 @@ router.post("/read-all", authenticate, async (req, res) => {
 
 router.get("/stream", authenticateSSE, async (req, res) => {
   res.setHeader("Content-Type", "text/event-stream");
-  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
   res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
   res.flushHeaders?.();
+  req.socket?.setKeepAlive?.(true);
 
   const write = (eventName, payload) => {
     res.write(`event: ${eventName}\n`);
@@ -156,6 +158,11 @@ router.get("/stream", authenticateSSE, async (req, res) => {
     if (typeof cachedUnreadCount === "number") {
       return cachedUnreadCount;
     }
+    cachedUnreadCount = await getUnreadCount(req.user.id);
+    return cachedUnreadCount;
+  };
+
+  const getFreshUnreadCount = async () => {
     cachedUnreadCount = await getUnreadCount(req.user.id);
     return cachedUnreadCount;
   };
@@ -185,13 +192,20 @@ router.get("/stream", authenticateSSE, async (req, res) => {
     }
   };
 
+  res.write("retry: 5000\n\n");
   write("ready", { unreadCount: await getCachedUnreadCount() });
   eventBroker.on(topic, listener);
 
-  const heartbeat = setInterval(
-    () => write("heartbeat", { at: new Date().toISOString() }),
-    30000,
-  );
+  const heartbeat = setInterval(async () => {
+    try {
+      write("heartbeat", {
+        at: new Date().toISOString(),
+        unreadCount: await getFreshUnreadCount(),
+      });
+    } catch (err) {
+      console.error("[Notifications] SSE heartbeat error:", err);
+    }
+  }, 10000);
 
   req.on("close", () => {
     clearInterval(heartbeat);

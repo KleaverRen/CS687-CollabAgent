@@ -35,8 +35,8 @@ async function getProjectMemberIds(projectId, client = pool) {
   return result.rows.map((row) => row.user_id);
 }
 
-async function publishNotification(notification) {
-  const unreadCount = await getUnreadCount(notification.user_id);
+async function publishNotification(notification, client = pool) {
+  const unreadCount = await getUnreadCount(notification.user_id, client);
   eventBroker.publish(`notifications.user.${notification.user_id}`, {
     notification,
     unreadCount,
@@ -120,7 +120,7 @@ async function createNotification(
     ],
   );
   const notification = serializeNotification(result.rows[0]);
-  await publishNotification(notification);
+  await publishNotification(notification, client);
   return notification;
 }
 
@@ -216,8 +216,8 @@ async function listNotifications(userId, { limit, before, unreadOnly } = {}) {
   return result.rows.map(serializeNotification);
 }
 
-async function getUnreadCount(userId) {
-  const result = await pool.query(
+async function getUnreadCount(userId, client = pool) {
+  const result = await client.query(
     `SELECT COUNT(*)::int AS count FROM notifications WHERE user_id = $1 AND is_read = FALSE`,
     [userId],
   );
@@ -232,7 +232,11 @@ async function markNotificationRead(userId, notificationId) {
      RETURNING *`,
     [notificationId, userId],
   );
-  return serializeNotification(result.rows[0]);
+  const notification = serializeNotification(result.rows[0]);
+  if (notification) {
+    await publishNotification(notification);
+  }
+  return notification;
 }
 
 async function markAllNotificationsRead(userId) {
@@ -243,6 +247,13 @@ async function markAllNotificationsRead(userId) {
      RETURNING id`,
     [userId],
   );
+  if (result.rowCount > 0) {
+    eventBroker.publish(`notifications.user.${userId}`, {
+      action: "read_all",
+      notification: null,
+      unreadCount: 0,
+    });
+  }
   return result.rowCount;
 }
 

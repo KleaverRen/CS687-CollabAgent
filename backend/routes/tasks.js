@@ -295,6 +295,7 @@ router.post('/', [
       },
       notification: task.assigned_to ? {
         recipientIds: [task.assigned_to],
+        skipActor: false,
         type: 'task.assigned',
         category: 'mentions',
         title: `Task assigned: ${task.title}`,
@@ -435,6 +436,7 @@ router.patch('/:id', [
       },
       notification: updatedTask.assigned_to ? {
         recipientIds: [updatedTask.assigned_to],
+        skipActor: false,
         type: previousTask.assigned_to !== updatedTask.assigned_to ? 'task.assigned' : 'task.updated',
         category: previousTask.assigned_to !== updatedTask.assigned_to ? 'mentions' : 'updates',
         title: previousTask.assigned_to !== updatedTask.assigned_to

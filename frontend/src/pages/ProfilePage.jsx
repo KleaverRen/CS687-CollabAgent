@@ -6,7 +6,6 @@ import {
   Award,
   Brain,
   CheckCircle2,
-  ChevronDown,
   Download,
   ExternalLink,
   FileText,

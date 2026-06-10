@@ -76,6 +76,86 @@ test("listNotifications scopes results to one user and unread filter", async () 
   assert.match(calls[0].sql, /n\.is_read = FALSE/);
 });
 
+test("createNotification computes unread count with the provided client", async () => {
+  const poolCalls = [];
+  const clientCalls = [];
+  const fakePool = {
+    query: async (sql, params) => {
+      poolCalls.push({ sql, params });
+      return { rows: [{ count: 0 }] };
+    },
+  };
+  const txClient = {
+    query: async (sql, params) => {
+      clientCalls.push({ sql, params });
+      if (/INSERT INTO notifications/.test(sql)) {
+        return {
+          rows: [{
+            id: "notification-1",
+            user_id: "user-1",
+            type: "task.assigned",
+            category: "tasks",
+            title: "Task assigned",
+            is_read: false,
+          }],
+        };
+      }
+      if (/COUNT\(\*\)::int AS count/.test(sql)) {
+        return { rows: [{ count: 1 }] };
+      }
+      return { rows: [] };
+    },
+  };
+  const service = loadServiceWithPool(fakePool);
+
+  await service.createNotification({
+    userId: "user-1",
+    type: "task.assigned",
+    title: "Task assigned",
+  }, txClient);
+
+  assert.equal(poolCalls.length, 0);
+  assert.equal(clientCalls.length, 2);
+  assert.match(clientCalls[1].sql, /COUNT\(\*\)::int AS count/);
+});
+
+test("notifyUsers can notify the actor for self-assigned tasks", async () => {
+  const calls = [];
+  const fakePool = {
+    query: async (sql, params) => {
+      calls.push({ sql, params });
+      if (/INSERT INTO notifications/.test(sql)) {
+        return {
+          rows: [{
+            id: "notification-1",
+            user_id: params[0],
+            actor_id: params[1],
+            type: params[4],
+            category: params[5],
+            title: params[6],
+            is_read: false,
+          }],
+        };
+      }
+      if (/COUNT\(\*\)::int AS count/.test(sql)) {
+        return { rows: [{ count: 1 }] };
+      }
+      return { rows: [] };
+    },
+  };
+  const service = loadServiceWithPool(fakePool);
+
+  const notifications = await service.notifyUsers(["user-1"], {
+    actorId: "user-1",
+    skipActor: false,
+    type: "task.assigned",
+    title: "Task assigned: Write tests",
+  });
+
+  assert.equal(notifications.length, 1);
+  assert.equal(calls.filter((call) => /INSERT INTO notifications/.test(call.sql)).length, 1);
+});
+
 test("markAllNotificationsRead only mutates unread rows for the authenticated user", async () => {
   const calls = [];
   const fakePool = {

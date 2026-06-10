@@ -792,6 +792,7 @@ router.post(
         notification: newTask.assigned_to
           ? {
               recipientIds: [newTask.assigned_to],
+              skipActor: false,
               type: "task.assigned",
               category: "mentions",
               title: `Task assigned: ${newTask.title}`,
@@ -1010,6 +1011,7 @@ router.post(
         notification: result.rows[0].assigned_to
           ? {
               recipientIds: [result.rows[0].assigned_to],
+              skipActor: false,
               type: "task.updated",
               category: "mentions",
               title: `Task assigned: ${result.rows[0].title}`,

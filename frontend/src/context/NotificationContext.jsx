@@ -1,6 +1,7 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import api from '../utils/api';
 import { useAuth } from './AuthContext';
+import { createNotificationStream } from '../utils/notificationStream';
 
 const NotificationContext = createContext(null);
 
@@ -10,10 +11,20 @@ export function NotificationProvider({ children }) {
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const notificationsRef = useRef([]);
+  const unreadCountRef = useRef(0);
 
-  const refresh = useCallback(async () => {
+  useEffect(() => {
+    notificationsRef.current = notifications;
+  }, [notifications]);
+
+  useEffect(() => {
+    unreadCountRef.current = unreadCount;
+  }, [unreadCount]);
+
+  const refresh = useCallback(async ({ silent = false } = {}) => {
     if (!user) return;
-    setLoading(true);
+    if (!silent) setLoading(true);
     setError('');
     try {
       const { data } = await api.get('/notifications?limit=25');
@@ -22,7 +33,7 @@ export function NotificationProvider({ children }) {
     } catch {
       setError('Failed to load notifications.');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [user]);
 
@@ -36,11 +47,22 @@ export function NotificationProvider({ children }) {
   }, [refresh, user]);
 
   useEffect(() => {
-    if (!user || typeof EventSource === 'undefined') return undefined;
+    if (!user) return undefined;
 
-    const source = new EventSource('/api/notifications/stream', {
-      withCredentials: true,
-    });
+    const interval = window.setInterval(() => {
+      refresh({ silent: true }).catch(() => null);
+    }, 10000);
+
+    return () => window.clearInterval(interval);
+  }, [refresh, user]);
+
+  useEffect(() => {
+    if (!user) return undefined;
+
+    const source = createNotificationStream();
+    if (!source) return undefined;
+
+    source.onopen = () => setError('');
 
     source.addEventListener('ready', (event) => {
       try {
@@ -49,19 +71,53 @@ export function NotificationProvider({ children }) {
       } catch {}
     });
 
+    source.addEventListener('heartbeat', (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        if (typeof payload.unreadCount !== 'number') return;
+        if (payload.unreadCount > unreadCountRef.current) {
+          refresh({ silent: true }).catch(() => null);
+        } else {
+          setUnreadCount(payload.unreadCount);
+        }
+      } catch {}
+    });
+
     source.addEventListener('notification', (event) => {
       try {
         const payload = JSON.parse(event.data);
-        if (payload.notification) {
+        const incoming = payload.notification;
+        const wasUnread = incoming
+          ? notificationsRef.current.some(
+            (item) => item.id === incoming.id && !item.is_read,
+          )
+          : false;
+        const isNewUnread = Boolean(
+          incoming && !incoming.is_read && !wasUnread,
+        );
+
+        if (payload.action === 'read_all') {
+          const readAt = new Date().toISOString();
+          setNotifications((current) => current.map((item) => ({
+            ...item,
+            is_read: true,
+            read_at: item.read_at || readAt,
+          })));
+        } else if (incoming) {
           setNotifications((current) => [
-            payload.notification,
-            ...current.filter((item) => item.id !== payload.notification.id),
+            incoming,
+            ...current.filter((item) => item.id !== incoming.id),
           ].slice(0, 25));
         }
+
         if (typeof payload.unreadCount === 'number') {
-          setUnreadCount(payload.unreadCount);
-        } else {
+          setUnreadCount((current) => (
+            isNewUnread ? Math.max(payload.unreadCount, current + 1) : payload.unreadCount
+          ));
+        } else if (isNewUnread) {
           setUnreadCount((count) => count + 1);
+        } else {
+          refresh().catch(() => null);
         }
       } catch {}
     });
@@ -71,7 +127,7 @@ export function NotificationProvider({ children }) {
     };
 
     return () => source.close();
-  }, [user]);
+  }, [refresh, user]);
 
   const markRead = useCallback(async (id) => {
     const { data } = await api.patch(`/notifications/${id}/read`);
