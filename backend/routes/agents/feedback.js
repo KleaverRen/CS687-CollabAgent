@@ -19,6 +19,37 @@ function requireAdvisorAgent(req, res, next) {
   next();
 }
 
+function humanizeGeneratedKey(key) {
+  return String(key || '')
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function stringifyGeneratedValue(value, fallback = '') {
+  if (value === null || value === undefined) return fallback;
+  if (typeof value === 'string') return value.trim() || fallback;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (Array.isArray(value)) {
+    const rendered = value
+      .map((item) => stringifyGeneratedValue(item, ''))
+      .filter(Boolean)
+      .map((item) => `- ${item}`)
+      .join('\n');
+    return rendered || fallback;
+  }
+  if (typeof value === 'object') {
+    const rendered = Object.entries(value)
+      .map(([key, item]) => {
+        const text = stringifyGeneratedValue(item, '');
+        return text ? `${humanizeGeneratedKey(key)}: ${text}` : null;
+      })
+      .filter(Boolean)
+      .join('\n');
+    return rendered || fallback;
+  }
+  return fallback;
+}
+
 // POST /api/agents/feedback/submit - Submit feedback and generate suggested responses
 router.post('/submit', authenticate, requireAdvisorAgent, async (req, res) => {
   try {
@@ -45,8 +76,14 @@ Respond strictly in valid JSON containing:
 Format strictly as JSON.`;
 
     const parsed = await generationService.generateJson(systemPrompt, `Feedback:\n${body}`, fallbackResult, provider);
-    const structuredSummary = parsed.structured_summary || fallbackResult.structured_summary;
-    const suggestedResponseTemplate = parsed.suggested_response_template || fallbackResult.suggested_response_template;
+    const structuredSummary = stringifyGeneratedValue(
+      parsed.structured_summary,
+      fallbackResult.structured_summary,
+    );
+    const suggestedResponseTemplate = stringifyGeneratedValue(
+      parsed.suggested_response_template,
+      fallbackResult.suggested_response_template,
+    );
 
     // Insert into database
     const result = await pool.query(

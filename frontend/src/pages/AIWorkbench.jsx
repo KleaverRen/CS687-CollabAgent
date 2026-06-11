@@ -219,6 +219,39 @@ function normalizeAgentMarkdown(text) {
     .trim();
 }
 
+function humanizeGeneratedKey(key) {
+  return String(key || "")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function formatGeneratedValue(value, fallback = "") {
+  if (value === null || value === undefined) return fallback;
+  if (typeof value === "string") return value.trim() || fallback;
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    const rendered = value
+      .map((item) => formatGeneratedValue(item, ""))
+      .filter(Boolean)
+      .map((item) => `- ${item}`)
+      .join("\n");
+    return rendered || fallback;
+  }
+  if (typeof value === "object") {
+    const rendered = Object.entries(value)
+      .map(([key, item]) => {
+        const text = formatGeneratedValue(item, "");
+        return text ? `${humanizeGeneratedKey(key)}: ${text}` : null;
+      })
+      .filter(Boolean)
+      .join("\n");
+    return rendered || fallback;
+  }
+  return fallback;
+}
+
 function taskDraftKey(draft, assignToSelf = false) {
   return [
     String(draft?.title || "")
@@ -330,7 +363,9 @@ function detectPromptAgent(prompt, activeAgentId, allowedAgentIds) {
     );
   if (wantsKnowledge && allowed.has("rag")) return "rag";
 
-  return allowed.has(activeAgentId) ? activeAgentId : [...allowed][0] || activeAgentId;
+  return allowed.has(activeAgentId)
+    ? activeAgentId
+    : [...allowed][0] || activeAgentId;
 }
 
 function extractConfirmationTitles(messageText) {
@@ -1228,30 +1263,34 @@ export default function AIWorkbench() {
     });
 
   const askDocuments = (queryOverride = null, options = {}) =>
-    runAction("rag", async () => {
-      const queryText =
-        queryOverride === null ? ragQuery : String(queryOverride || "");
+    runAction(
+      "rag",
+      async () => {
+        const queryText =
+          queryOverride === null ? ragQuery : String(queryOverride || "");
 
-      if (!queryText.trim()) {
-        toast.error("Enter a question first.");
-        return false;
-      }
-      const { data } = await api.post("/agents/rag/query", {
-        query: queryText,
-        projectId,
-        limit: 3,
-        provider: providerValue,
-      });
-      setRagAnswer(data);
-      return {
-        message: data.answer || "No answer was generated.",
-        metadata: {
-          answer: data.answer || "",
-          sources: data.sources || [],
-          sourceCount: Array.isArray(data.sources) ? data.sources.length : 0,
-        },
-      };
-    }, options);
+        if (!queryText.trim()) {
+          toast.error("Enter a question first.");
+          return false;
+        }
+        const { data } = await api.post("/agents/rag/query", {
+          query: queryText,
+          projectId,
+          limit: 3,
+          provider: providerValue,
+        });
+        setRagAnswer(data);
+        return {
+          message: data.answer || "No answer was generated.",
+          metadata: {
+            answer: data.answer || "",
+            sources: data.sources || [],
+            sourceCount: Array.isArray(data.sources) ? data.sources.length : 0,
+          },
+        };
+      },
+      options,
+    );
 
   const shouldUpdateExistingTask = (request) => {
     const text = String(request || "").toLowerCase();
@@ -1268,56 +1307,65 @@ export default function AIWorkbench() {
   };
 
   const parseTask = (requestOverride = null, options = {}) =>
-    runAction("task", async () => {
-      const requestText =
-        requestOverride === null ? taskRequest : String(requestOverride || "");
+    runAction(
+      "task",
+      async () => {
+        const requestText =
+          requestOverride === null
+            ? taskRequest
+            : String(requestOverride || "");
 
-      if (!requestText.trim()) {
-        toast.error("Describe the task first.");
-        return false;
-      }
+        if (!requestText.trim()) {
+          toast.error("Describe the task first.");
+          return false;
+        }
 
-      if (shouldUpdateExistingTask(requestText)) {
-        const { data } = await api.post("/agents/task/update-existing", {
+        if (shouldUpdateExistingTask(requestText)) {
+          const { data } = await api.post("/agents/task/update-existing", {
+            request: requestText,
+            projectId,
+            provider: providerValue,
+          });
+          setTaskDraft(null);
+          setTaskDrafts([]);
+          setTaskUpdateDraft(data.updateDraft);
+          return {
+            message: `Prepared task update:\n\n${taskDraftSummary(data.updateDraft)}`,
+            metadata: {
+              draftType: "task_update",
+              updateDraft: data.updateDraft,
+            },
+          };
+        }
+
+        const { data } = await api.post("/agents/task/parse", {
           request: requestText,
           projectId,
           provider: providerValue,
         });
-        setTaskDraft(null);
-        setTaskDrafts([]);
-        setTaskUpdateDraft(data.updateDraft);
-        return {
-          message: `Prepared task update:\n\n${taskDraftSummary(data.updateDraft)}`,
-          metadata: { draftType: "task_update", updateDraft: data.updateDraft },
-        };
-      }
-
-      const { data } = await api.post("/agents/task/parse", {
-        request: requestText,
-        projectId,
-        provider: providerValue,
-      });
-      setTaskUpdateDraft(null);
-      if (Array.isArray(data.drafts) && data.drafts.length) {
-        setTaskDraft(null);
-        setTaskDrafts(data.drafts);
-        return {
-          message: `Generated ${data.drafts.length} task draft${data.drafts.length === 1 ? "" : "s"}:\n\n${taskDraftsSummary(data.drafts)}`,
-          metadata: {
-            draftType: "task_list",
-            draftCount: data.drafts.length,
-            drafts: data.drafts,
-          },
-        };
-      } else {
-        setTaskDrafts([]);
-        setTaskDraft(data.draft);
-        return {
-          message: `Generated task draft:\n\n${taskDraftSummary(data.draft)}`,
-          metadata: { draftType: "single_task", draft: data.draft },
-        };
-      }
-    }, options);
+        setTaskUpdateDraft(null);
+        if (Array.isArray(data.drafts) && data.drafts.length) {
+          setTaskDraft(null);
+          setTaskDrafts(data.drafts);
+          return {
+            message: `Generated ${data.drafts.length} task draft${data.drafts.length === 1 ? "" : "s"}:\n\n${taskDraftsSummary(data.drafts)}`,
+            metadata: {
+              draftType: "task_list",
+              draftCount: data.drafts.length,
+              drafts: data.drafts,
+            },
+          };
+        } else {
+          setTaskDrafts([]);
+          setTaskDraft(data.draft);
+          return {
+            message: `Generated task draft:\n\n${taskDraftSummary(data.draft)}`,
+            metadata: { draftType: "single_task", draft: data.draft },
+          };
+        }
+      },
+      options,
+    );
 
   const confirmTask = async (draft, assignToSelf = false) => {
     if (draft.createdTaskId) return false;
@@ -1509,87 +1557,106 @@ export default function AIWorkbench() {
     });
 
   const summarizeMeeting = (transcriptOverride = null, options = {}) =>
-    runAction("meeting", async () => {
-      const transcriptText =
-        transcriptOverride === null
-          ? transcript
-          : String(transcriptOverride || "");
+    runAction(
+      "meeting",
+      async () => {
+        const transcriptText =
+          transcriptOverride === null
+            ? transcript
+            : String(transcriptOverride || "");
 
-      if (!transcriptText.trim()) {
-        toast.error("Paste meeting notes first.");
-        return false;
-      }
-      const { data } = await api.post("/agents/coordination/meeting", {
-        transcript: transcriptText,
-        projectId,
-        provider: providerValue,
-      });
-      data.actionItemDrafts = data.actionItemDrafts?.map((item, index) => ({
-        ...item,
-        id: item.id || `meeting-action-${Date.now()}-${index}`,
-      }));
-      setMeetingResult(data);
-      return {
-        message: [
-          data.summary || "Meeting summary generated.",
-          data.actionItemDrafts?.length
-            ? `Action items:\n\n${taskDraftsSummary(data.actionItemDrafts)}`
-            : "No action items were identified.",
-        ].join("\n\n"),
-        metadata: {
-          meetingResult: data,
-          actionItemCount: data.actionItemDrafts?.length || 0,
-        },
-      };
-    }, options);
+        if (!transcriptText.trim()) {
+          toast.error("Paste meeting notes first.");
+          return false;
+        }
+        const { data } = await api.post("/agents/coordination/meeting", {
+          transcript: transcriptText,
+          projectId,
+          provider: providerValue,
+        });
+        data.actionItemDrafts = data.actionItemDrafts?.map((item, index) => ({
+          ...item,
+          id: item.id || `meeting-action-${Date.now()}-${index}`,
+        }));
+        setMeetingResult(data);
+        return {
+          message: [
+            data.summary || "Meeting summary generated.",
+            data.actionItemDrafts?.length
+              ? `Action items:\n\n${taskDraftsSummary(data.actionItemDrafts)}`
+              : "No action items were identified.",
+          ].join("\n\n"),
+          metadata: {
+            meetingResult: data,
+            actionItemCount: data.actionItemDrafts?.length || 0,
+          },
+        };
+      },
+      options,
+    );
 
   const submitFeedback = (bodyOverride = null, options = {}) =>
-    runAction("feedback", async () => {
-      const bodyText =
-        bodyOverride === null ? feedbackBody : String(bodyOverride || "");
+    runAction(
+      "feedback",
+      async () => {
+        const bodyText =
+          bodyOverride === null ? feedbackBody : String(bodyOverride || "");
 
-      if (!bodyText.trim()) {
-        toast.error("Add feedback text first.");
-        return false;
-      }
-      const { data } = await api.post("/agents/feedback/submit", {
-        projectId,
-        body: bodyText,
-        severity: feedbackSeverity,
-        category: "general",
-        provider: providerValue,
-      });
-      setFeedbackResult(data);
-      toast.success("Feedback recorded.");
-      return {
-        message: [
-          data.structuredSummary || "Feedback recorded.",
-          data.suggestedResponseTemplate
-            ? `Suggested response:\n\n${data.suggestedResponseTemplate}`
-            : null,
-        ]
-          .filter(Boolean)
-          .join("\n\n"),
-        metadata: { feedbackId: data.feedback?.id, feedbackResult: data },
-      };
-    }, options);
+        if (!bodyText.trim()) {
+          toast.error("Add feedback text first.");
+          return false;
+        }
+        const { data } = await api.post("/agents/feedback/submit", {
+          projectId,
+          body: bodyText,
+          severity: feedbackSeverity,
+          category: "general",
+          provider: providerValue,
+        });
+        setFeedbackResult(data);
+        toast.success("Feedback recorded.");
+        const structuredSummary = formatGeneratedValue(
+          data.structuredSummary,
+          "Feedback recorded.",
+        );
+        const suggestedResponseTemplate = formatGeneratedValue(
+          data.suggestedResponseTemplate,
+        );
+        return {
+          message: [
+            structuredSummary,
+            suggestedResponseTemplate
+              ? `Suggested response:\n\n${suggestedResponseTemplate}`
+              : null,
+          ]
+            .filter(Boolean)
+            .join("\n\n"),
+          metadata: { feedbackId: data.feedback?.id, feedbackResult: data },
+        };
+      },
+      options,
+    );
 
   const generateProgressReport = (promptOverride = null, options = {}) =>
-    runAction("progress", async () => {
-      const params = new URLSearchParams({ projectId });
-      if (providerValue) params.set("provider", providerValue);
-      const { data } = await api.get(
-        `/agents/progress/report?${params.toString()}`,
-      );
-      setProgressReport(data.report);
-      return {
-        message: data.report || "Progress report generated.",
-        metadata: {
-          reportLength: data.report?.length || 0,
-          report: data.report,
-        },
-      };
-    }, options);
+    runAction(
+      "progress",
+      async () => {
+        const params = new URLSearchParams({ projectId });
+        if (providerValue) params.set("provider", providerValue);
+        const { data } = await api.get(
+          `/agents/progress/report?${params.toString()}`,
+        );
+        setProgressReport(data.report);
+        return {
+          message: data.report || "Progress report generated.",
+          metadata: {
+            reportLength: data.report?.length || 0,
+            report: data.report,
+          },
+        };
+      },
+      options,
+    );
 
   const runActiveAgent = async () => {
     const prompt = String(composerValue || "").trim();
@@ -1638,7 +1705,8 @@ export default function AIWorkbench() {
     }
 
     let completed = false;
-    if (targetAgentId === "rag") completed = await askDocuments(prompt, runOptions);
+    if (targetAgentId === "rag")
+      completed = await askDocuments(prompt, runOptions);
     else if (targetAgentId === "task")
       completed = await parseTask(prompt, runOptions);
     else if (targetAgentId === "meeting")
@@ -2136,7 +2204,10 @@ export default function AIWorkbench() {
                   "text-[#191c1d]",
                 )}
               >
-                {feedbackResult.structuredSummary}
+                {formatGeneratedValue(
+                  feedbackResult.structuredSummary,
+                  "Feedback recorded.",
+                )}
               </p>
             </div>
             <div>
@@ -2160,7 +2231,7 @@ export default function AIWorkbench() {
                   "text-[#191c1d]",
                 )}
               >
-                {feedbackResult.suggestedResponseTemplate}
+                {formatGeneratedValue(feedbackResult.suggestedResponseTemplate)}
               </p>
             </div>
           </div>
@@ -2319,7 +2390,6 @@ export default function AIWorkbench() {
                   className="h-10 rounded-full border border-[#dfe3f0] bg-white px-4 text-sm font-semibold text-[#6b6f85] outline-none focus:border-[#4f46e5]"
                 >
                   <option value="auto">Auto</option>
-                  <option value="ollama">Ollama</option>
                   <option value="groq">Groq</option>
                   <option value="gemini">Gemini</option>
                 </select>
