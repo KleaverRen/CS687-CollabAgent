@@ -214,34 +214,163 @@ function looksLikeTaskBreakdownRequest(request) {
  */
 function looksLikeRAGAugmentedTaskRequest(request) {
   const text = String(request || "").toLowerCase();
-  return /\b(based on|from|using|referencing|according to)\b.*\b(docs?|documentation|notes|knowledge|research|proposal|paper|files?)\b/.test(
-    text,
+  return (
+    /\b(based on|from|using|referencing|according to)\b.*\b(docs?|documentation|notes|knowledge|research|proposal|paper|files?)\b/.test(
+      text,
+    ) ||
+    /\bphase\s*\d+\b/.test(text) ||
+    /\b(indexed|ingested|uploaded|knowledge base|project plan|deployment plan|requirements|feasibility)\b/.test(
+      text,
+    )
   );
 }
 
 /**
- * Internal helper to simulate/call RAG query for context.
- * In a full implementation, this would call your RAG service directly.
+ * Extract stable search terms for cross-agent retrieval.
+ */
+function extractKnowledgeReferenceTerms(request) {
+  const stopWords = new Set([
+    "about",
+    "actionable",
+    "agent",
+    "all",
+    "and",
+    "based",
+    "breakdown",
+    "comprehensive",
+    "create",
+    "description",
+    "document",
+    "documentation",
+    "each",
+    "for",
+    "from",
+    "generate",
+    "give",
+    "indexed",
+    "into",
+    "list",
+    "need",
+    "please",
+    "project",
+    "provide",
+    "task",
+    "tasks",
+    "the",
+    "this",
+    "title",
+    "using",
+    "with",
+    "workstream",
+    "workstreams",
+  ]);
+
+  const text = String(request || "").toLowerCase();
+  const terms = new Set(
+    text
+      .replace(/[^\w\s]/g, " ")
+      .split(/\s+/)
+      .map((term) => term.trim())
+      .filter((term) => term.length > 2 && !stopWords.has(term)),
+  );
+
+  const phaseMatches = text.matchAll(/\bphase\s*(\d+)\b/g);
+  for (const match of phaseMatches) {
+    terms.add("phase");
+    terms.add(match[1]);
+    terms.add(`phase ${match[1]}`);
+  }
+
+  return [...terms];
+}
+
+function scoreKnowledgeDocument(row, queryTerms) {
+  const title = String(row.title || "");
+  const content = String(row.content || "");
+  const metadata = row.metadata || {};
+  const metadataText = [
+    metadata.description,
+    metadata.summary,
+    metadata.originalName,
+    metadata.source,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const titleText = title.toLowerCase();
+  const searchable = `${title}\n${metadataText}\n${content}`.toLowerCase();
+  let score = 0;
+
+  for (const term of queryTerms) {
+    const normalizedTerm = String(term || "").toLowerCase();
+    if (!normalizedTerm) continue;
+    if (titleText.includes(normalizedTerm)) score += 5;
+    if (metadataText.toLowerCase().includes(normalizedTerm)) score += 3;
+    if (searchable.includes(normalizedTerm)) score += 1;
+  }
+
+  const phaseMatch = String(queryTerms.join(" ")).match(/\bphase\s*(\d+)\b/);
+  if (phaseMatch && searchable.includes(`phase ${phaseMatch[1]}`)) score += 8;
+
+  if (row.embedding_status === "indexed" || row.indexed) score += 2;
+
+  return score;
+}
+
+/**
+ * Retrieve relevant Knowledge Agent documents for Task Orchestrator.
  */
 async function fetchKnowledgeContext(projectId, query) {
   try {
-    // We assume the internal RAG logic is accessible.
-    // If your RAG logic is strictly in another route, you can refactor it into a service.
-    const response = await pool.query(
-      `SELECT content FROM documents 
-       WHERE project_id = $1 AND embedding_status = 'indexed'
-       ORDER BY created_at DESC LIMIT 3`,
+    const queryTerms = extractKnowledgeReferenceTerms(query);
+    if (queryTerms.length === 0) return { context: "", sources: [] };
+
+    const result = await pool.query(
+      `SELECT id, title, content, indexed, embedding_status, metadata, created_at
+       FROM documents
+       WHERE project_id = $1
+         AND content IS NOT NULL
+         AND char_length(trim(content)) > 0
+         AND COALESCE(embedding_status, 'pending') <> 'failed'
+       ORDER BY created_at DESC
+       LIMIT 30`,
       [projectId],
     );
 
-    if (response.rows.length === 0) return "";
+    const ranked = result.rows
+      .map((row) => ({
+        row,
+        score: scoreKnowledgeDocument(row, queryTerms),
+      }))
+      .filter((item) => item.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 5);
 
-    return response.rows
-      .map((r) => r.content.substring(0, 1000))
-      .join("\n---\n");
+    if (ranked.length === 0) return { context: "", sources: [] };
+
+    return {
+      context: ranked
+        .map(({ row }) => {
+          const metadata = row.metadata || {};
+          const description = metadata.description || metadata.summary || "";
+          return [
+            `[Document: ${row.title}]`,
+            description ? `Description: ${description}` : null,
+            String(row.content || "").substring(0, 2500),
+          ]
+            .filter(Boolean)
+            .join("\n");
+        })
+        .join("\n\n---\n\n"),
+      sources: ranked.map(({ row, score }) => ({
+        id: row.id,
+        title: row.title,
+        status: row.embedding_status,
+        score,
+      })),
+    };
   } catch (err) {
     console.error("[TaskAgent] Knowledge retrieval failed:", err);
-    return "";
+    return { context: "", sources: [] };
   }
 }
 
@@ -449,10 +578,12 @@ router.post("/parse", authenticate, requireStudentAgent, async (req, res) => {
     if (looksLikeTaskBreakdownRequest(request)) {
       const fallbackTasks = fallbackPhaseOneTasks();
       let knowledgeContext = "";
+      let knowledgeSources = [];
 
-      // NEW: Link with Knowledge Agent if the user references documentation
       if (looksLikeRAGAugmentedTaskRequest(request)) {
-        knowledgeContext = await fetchKnowledgeContext(projectId, request);
+        const knowledgeResult = await fetchKnowledgeContext(projectId, request);
+        knowledgeContext = knowledgeResult.context;
+        knowledgeSources = knowledgeResult.sources;
         if (knowledgeContext) {
           console.log(
             "[TaskAgent] Augmented generation with project knowledge.",
@@ -494,8 +625,11 @@ Create 10 to 16 tasks. Do not include markdown.`;
       return res.json({
         drafts,
         requires_confirmation: true,
+        knowledge_sources: knowledgeSources,
         message:
-          "Please review and confirm these generated task drafts before creation.",
+          knowledgeSources.length > 0
+            ? "Please review and confirm these generated task drafts before creation. Relevant project knowledge was used."
+            : "Please review and confirm these generated task drafts before creation.",
       });
     }
 
@@ -1073,8 +1207,11 @@ router.get(
 
 router._test = {
   buildDuplicateTaskMetadataFilter,
+  extractKnowledgeReferenceTerms,
   looksLikeTaskBreakdownRequest,
+  looksLikeRAGAugmentedTaskRequest,
   normalizeSingleTaskDraft,
+  scoreKnowledgeDocument,
 };
 
 module.exports = router;

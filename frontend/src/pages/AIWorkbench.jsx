@@ -240,6 +240,99 @@ function normalizeTaskTitle(value) {
     .toLowerCase();
 }
 
+function shouldRoutePromptToTaskAgent(prompt) {
+  const text = String(prompt || "").toLowerCase();
+  const asksForTasks =
+    /\b(generate|create|draft|prepare|compose|make)\b/.test(text) &&
+    /\b(tasks?|task list|workstreams?|breakdown|action items?)\b/.test(text);
+  const referencesKnowledge =
+    /\bphase\s*\d+\b/.test(text) ||
+    /\b(indexed|ingested|uploaded|knowledge|docs?|documentation|project plan|deployment plan|requirements|feasibility)\b/.test(
+      text,
+    );
+
+  return asksForTasks && referencesKnowledge;
+}
+
+function getPromptAgentMention(prompt) {
+  const text = String(prompt || "").toLowerCase();
+  const mentionMap = [
+    { pattern: /@?(knowledge|rag)\s+agent\b|@knowledge\b|@rag\b/, id: "rag" },
+    {
+      pattern:
+        /@?(task\s+orchestrator|task)\s+agent\b|@task\b|@task-orchestrator\b/,
+      id: "task",
+    },
+    {
+      pattern:
+        /@?(team\s+coordinator|meeting|coordination)\s+agent\b|@team\b|@meeting\b/,
+      id: "meeting",
+    },
+    {
+      pattern: /@?(feedback)\s+agent\b|@feedback\b/,
+      id: "feedback",
+    },
+    {
+      pattern:
+        /@?(advisor\s+analyst|progress|advisor)\s+agent\b|@progress\b|@advisor\b/,
+      id: "progress",
+    },
+  ];
+
+  return mentionMap.find((item) => item.pattern.test(text))?.id || null;
+}
+
+function detectPromptAgent(prompt, activeAgentId, allowedAgentIds) {
+  const allowed = allowedAgentIds || new Set();
+  const text = String(prompt || "").toLowerCase();
+  const mentionedAgent = getPromptAgentMention(prompt);
+  if (mentionedAgent && allowed.has(mentionedAgent)) return mentionedAgent;
+
+  const wantsProgress =
+    /\b(progress report|status report|weekly report|project health|completion rate|open feedback|velocity|risk assessment|advisor report)\b/.test(
+      text,
+    ) ||
+    (/\b(report|summary|status|health|progress|risk|risks)\b/.test(text) &&
+      /\b(project|tasks?|feedback|stakeholders?|advisor)\b/.test(text));
+  if (wantsProgress && allowed.has("progress")) return "progress";
+
+  const looksLikeMeetingTranscript =
+    /\b(today we|we agreed|meeting|transcript|discussed|standup|sync|call notes|action items?|follow-ups?)\b/.test(
+      text,
+    ) ||
+    (/\b\w+\s+will\s+\w+/.test(text) &&
+      /\b(agreed|prepare|review|evaluate|assign|assigned|priority|before|deadline|due)\b/.test(
+        text,
+      ));
+  if (looksLikeMeetingTranscript && allowed.has("meeting")) return "meeting";
+
+  const wantsFeedback =
+    /\b(feedback|advisor comment|review comment|critique|revision request|suggested response|respond to|severity)\b/.test(
+      text,
+    ) ||
+    (/\b(advisor|faculty|reviewer)\b/.test(text) &&
+      /\b(said|asked|concern|concerns|revise|improve|response)\b/.test(text));
+  if (wantsFeedback && allowed.has("feedback")) return "feedback";
+
+  const wantsTasks =
+    shouldRoutePromptToTaskAgent(prompt) ||
+    /\b(create|generate|draft|assign|reassign|update|change|set|deadline|due|task list|tasks?|todo|to do|backlog|workstreams?|breakdown)\b/.test(
+      text,
+    );
+  if (wantsTasks && allowed.has("task")) return "task";
+
+  const wantsKnowledge =
+    /\b(ask|answer|find|search|summarize|what|which|where|when|why|how|according to|based on)\b/.test(
+      text,
+    ) &&
+    /\b(docs?|documentation|knowledge|indexed|ingested|uploaded|paper|proposal|research|phase|file|files|document)\b/.test(
+      text,
+    );
+  if (wantsKnowledge && allowed.has("rag")) return "rag";
+
+  return allowed.has(activeAgentId) ? activeAgentId : [...allowed][0] || activeAgentId;
+}
+
 function extractConfirmationTitles(messageText) {
   const text = String(messageText || "");
   const titles = [];
@@ -1061,30 +1154,36 @@ export default function AIWorkbench() {
     });
   };
 
-  const runAction = async (key, action) => {
+  const runAction = async (key, action, options = {}) => {
     setLoadingAction(key);
     const actionType = actionLabels[key] || "Agent Request";
+    const responseAgentId = options.agentId || activeTab;
+    const responseAgentLabel = options.agentLabel || activeAgent.label;
     try {
       const result = await action();
       if (result === false) return false;
       const resultMessage =
         result && typeof result === "object" && result.message
           ? result.message
-          : `${activeAgent.label} completed ${actionType.toLowerCase()}.`;
+          : `${responseAgentLabel} completed ${actionType.toLowerCase()}.`;
       await logWorkbenchActivity({
         actionType: "Agent Response",
         status: "success",
         metadata: {
           workflow: key,
           responseType: actionType,
+          responseAgentId,
+          responseAgentLabel,
           ...(result && typeof result === "object"
             ? result.metadata || {}
             : {}),
         },
       });
-      appendAgentMessage(resultMessage, activeTab, {
+      appendAgentMessage(resultMessage, responseAgentId, {
         workflow: key,
         responseType: actionType,
+        responseAgentId,
+        responseAgentLabel,
         ...(result && typeof result === "object" ? result.metadata || {} : {}),
       });
       return true;
@@ -1095,6 +1194,8 @@ export default function AIWorkbench() {
         metadata: {
           workflow: key,
           responseType: actionType,
+          responseAgentId,
+          responseAgentLabel,
           error: err.response?.data?.error || err.message,
         },
       });
@@ -1126,14 +1227,17 @@ export default function AIWorkbench() {
       };
     });
 
-  const askDocuments = () =>
+  const askDocuments = (queryOverride = null, options = {}) =>
     runAction("rag", async () => {
-      if (!ragQuery.trim()) {
+      const queryText =
+        queryOverride === null ? ragQuery : String(queryOverride || "");
+
+      if (!queryText.trim()) {
         toast.error("Enter a question first.");
         return false;
       }
       const { data } = await api.post("/agents/rag/query", {
-        query: ragQuery,
+        query: queryText,
         projectId,
         limit: 3,
         provider: providerValue,
@@ -1147,7 +1251,7 @@ export default function AIWorkbench() {
           sourceCount: Array.isArray(data.sources) ? data.sources.length : 0,
         },
       };
-    });
+    }, options);
 
   const shouldUpdateExistingTask = (request) => {
     const text = String(request || "").toLowerCase();
@@ -1163,16 +1267,19 @@ export default function AIWorkbench() {
     );
   };
 
-  const parseTask = () =>
+  const parseTask = (requestOverride = null, options = {}) =>
     runAction("task", async () => {
-      if (!taskRequest.trim()) {
+      const requestText =
+        requestOverride === null ? taskRequest : String(requestOverride || "");
+
+      if (!requestText.trim()) {
         toast.error("Describe the task first.");
         return false;
       }
 
-      if (shouldUpdateExistingTask(taskRequest)) {
+      if (shouldUpdateExistingTask(requestText)) {
         const { data } = await api.post("/agents/task/update-existing", {
-          request: taskRequest,
+          request: requestText,
           projectId,
           provider: providerValue,
         });
@@ -1186,7 +1293,7 @@ export default function AIWorkbench() {
       }
 
       const { data } = await api.post("/agents/task/parse", {
-        request: taskRequest,
+        request: requestText,
         projectId,
         provider: providerValue,
       });
@@ -1210,7 +1317,7 @@ export default function AIWorkbench() {
           metadata: { draftType: "single_task", draft: data.draft },
         };
       }
-    });
+    }, options);
 
   const confirmTask = async (draft, assignToSelf = false) => {
     if (draft.createdTaskId) return false;
@@ -1401,14 +1508,19 @@ export default function AIWorkbench() {
       };
     });
 
-  const summarizeMeeting = () =>
+  const summarizeMeeting = (transcriptOverride = null, options = {}) =>
     runAction("meeting", async () => {
-      if (!transcript.trim()) {
+      const transcriptText =
+        transcriptOverride === null
+          ? transcript
+          : String(transcriptOverride || "");
+
+      if (!transcriptText.trim()) {
         toast.error("Paste meeting notes first.");
         return false;
       }
       const { data } = await api.post("/agents/coordination/meeting", {
-        transcript,
+        transcript: transcriptText,
         projectId,
         provider: providerValue,
       });
@@ -1429,17 +1541,20 @@ export default function AIWorkbench() {
           actionItemCount: data.actionItemDrafts?.length || 0,
         },
       };
-    });
+    }, options);
 
-  const submitFeedback = () =>
+  const submitFeedback = (bodyOverride = null, options = {}) =>
     runAction("feedback", async () => {
-      if (!feedbackBody.trim()) {
+      const bodyText =
+        bodyOverride === null ? feedbackBody : String(bodyOverride || "");
+
+      if (!bodyText.trim()) {
         toast.error("Add feedback text first.");
         return false;
       }
       const { data } = await api.post("/agents/feedback/submit", {
         projectId,
-        body: feedbackBody,
+        body: bodyText,
         severity: feedbackSeverity,
         category: "general",
         provider: providerValue,
@@ -1457,9 +1572,9 @@ export default function AIWorkbench() {
           .join("\n\n"),
         metadata: { feedbackId: data.feedback?.id, feedbackResult: data },
       };
-    });
+    }, options);
 
-  const generateProgressReport = () =>
+  const generateProgressReport = (promptOverride = null, options = {}) =>
     runAction("progress", async () => {
       const params = new URLSearchParams({ projectId });
       if (providerValue) params.set("provider", providerValue);
@@ -1474,37 +1589,68 @@ export default function AIWorkbench() {
           report: data.report,
         },
       };
-    });
+    }, options);
 
   const runActiveAgent = async () => {
     const prompt = String(composerValue || "").trim();
-    if (activeTab !== "progress" && !prompt) {
+    const sourceAgentId = activeTab;
+    const targetAgentId = detectPromptAgent(prompt, activeTab, allowedTabIds);
+    const targetAgent =
+      allowedTabs.find((tab) => tab.id === targetAgentId) || activeAgent;
+    const runOptions = {
+      agentId: targetAgent.id,
+      agentLabel: targetAgent.label,
+    };
+
+    if (targetAgentId !== "progress" && !prompt) {
       toast.error(
-        `Enter a ${activeAgent.shortLabel.toLowerCase()} prompt first.`,
+        `Enter a ${targetAgent.shortLabel.toLowerCase()} prompt first.`,
       );
       return;
     }
 
     appendUserMessage(
-      prompt || `${activeAgent.label} requested a fresh progress report.`,
+      prompt || `${targetAgent.label} requested a fresh progress report.`,
     );
     logWorkbenchActivity({
       actionType: "Chat Query",
       status: "submitted",
       metadata: {
-        workflow: activeTab,
+        workflow: targetAgentId,
+        routedFrom: sourceAgentId,
+        routedTo: targetAgentId,
         promptPreview: prompt.slice(0, 160),
       },
     });
 
-    let completed = false;
-    if (activeTab === "rag") completed = await askDocuments();
-    else if (activeTab === "task") completed = await parseTask();
-    else if (activeTab === "meeting") completed = await summarizeMeeting();
-    else if (activeTab === "feedback") completed = await submitFeedback();
-    else completed = await generateProgressReport();
+    if (targetAgentId !== sourceAgentId) {
+      setActiveTab(targetAgentId);
+      setComposerForAgent(targetAgentId, prompt);
+      logWorkbenchActivity({
+        actionType: "Auto Agent Route",
+        status: "success",
+        metadata: {
+          fromAgent: activeAgent.label,
+          toAgent: targetAgent.label,
+          promptPreview: prompt.slice(0, 160),
+        },
+      });
+    }
 
-    if (completed) clearActiveComposer();
+    let completed = false;
+    if (targetAgentId === "rag") completed = await askDocuments(prompt, runOptions);
+    else if (targetAgentId === "task")
+      completed = await parseTask(prompt, runOptions);
+    else if (targetAgentId === "meeting")
+      completed = await summarizeMeeting(prompt, runOptions);
+    else if (targetAgentId === "feedback")
+      completed = await submitFeedback(prompt, runOptions);
+    else completed = await generateProgressReport(prompt, runOptions);
+
+    if (completed) {
+      clearComposerForAgent(sourceAgentId);
+      if (targetAgentId !== sourceAgentId) clearComposerForAgent(targetAgentId);
+    }
   };
 
   const renderRag = () => (
@@ -2094,20 +2240,20 @@ export default function AIWorkbench() {
     progress: progressPrompt,
   }[activeTab];
 
-  const updateComposer = (value) => {
-    if (activeTab === "rag") setRagQuery(value);
-    if (activeTab === "task") setTaskRequest(value);
-    if (activeTab === "meeting") setTranscript(value);
-    if (activeTab === "feedback") setFeedbackBody(value);
-    if (activeTab === "progress") setProgressPrompt(value);
+  const setComposerForAgent = (agentId, value) => {
+    if (agentId === "rag") setRagQuery(value);
+    if (agentId === "task") setTaskRequest(value);
+    if (agentId === "meeting") setTranscript(value);
+    if (agentId === "feedback") setFeedbackBody(value);
+    if (agentId === "progress") setProgressPrompt(value);
   };
 
-  const clearActiveComposer = () => {
-    if (activeTab === "rag") setRagQuery("");
-    if (activeTab === "task") setTaskRequest("");
-    if (activeTab === "meeting") setTranscript("");
-    if (activeTab === "feedback") setFeedbackBody("");
-    if (activeTab === "progress") setProgressPrompt("");
+  const clearComposerForAgent = (agentId) => {
+    setComposerForAgent(agentId, "");
+  };
+
+  const updateComposer = (value) => {
+    setComposerForAgent(activeTab, value);
   };
 
   const normalizedSearch = searchTerm.trim().toLowerCase();
