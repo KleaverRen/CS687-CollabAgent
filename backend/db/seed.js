@@ -97,7 +97,8 @@ async function seedUsers(client, users, role, passwordHash) {
         passwordHash,
         role,
         user.institution || "City University",
-        user.job_title || (role === "advisor" ? "Faculty Advisor" : "Graduate Student"),
+        user.job_title ||
+          (role === "advisor" ? "Faculty Advisor" : "Graduate Student"),
         user.location || "Seattle WA",
         user.organization || "School of Computer Science",
         user.bio || null,
@@ -119,30 +120,28 @@ async function seed() {
     await client.query("BEGIN");
 
     console.log("Resetting app data...");
-    await client.query(`
-      TRUNCATE TABLE
-        task_dependencies,
-        tasks,
-        ai_workbench_messages,
-        ai_workbench_sessions,
-        direct_messages,
-        direct_conversation_members,
-        direct_conversations,
-        project_messages,
-        notifications,
-        activity_log,
-        feedback_responses,
-        feedback,
-        risk_register,
-        document_chunks,
-        documents,
-        agents,
-        project_members,
-        projects,
-        sessions,
-        users
-      RESTART IDENTITY CASCADE
+
+    // Dynamically truncate only tables that exist
+    const { rows: existingTables } = await client.query(`
+      SELECT tablename
+      FROM pg_catalog.pg_tables
+      WHERE schemaname = 'public'
+        AND tablename IN (
+          'task_dependencies', 'tasks', 'ai_workbench_messages',
+          'ai_workbench_sessions', 'direct_messages', 'direct_conversation_members',
+          'direct_conversations', 'project_messages', 'notifications',
+          'activity_log', 'feedback_responses', 'feedback', 'risk_register',
+          'document_chunks', 'documents', 'agents', 'project_members',
+          'projects', 'sessions', 'users'
+        )
     `);
+
+    if (existingTables.length > 0) {
+      const tableNames = existingTables.map((t) => t.tablename);
+      await client.query(
+        `TRUNCATE TABLE ${tableNames.join(", ")} RESTART IDENTITY CASCADE`,
+      );
+    }
 
     console.log(`Inserting ${advisors.length} advisors...`);
     await seedUsers(client, advisors, "advisor", passwordHash);
@@ -153,7 +152,9 @@ async function seed() {
     await client.query("COMMIT");
 
     console.log("Database seeded successfully.");
-    console.log(`Seeded ${advisors.length} advisors and ${students.length} students.`);
+    console.log(
+      `Seeded ${advisors.length} advisors and ${students.length} students.`,
+    );
     console.log(`Default seed password: ${DEFAULT_PASSWORD}`);
   } catch (err) {
     await client.query("ROLLBACK");
